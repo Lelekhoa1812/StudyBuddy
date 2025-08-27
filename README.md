@@ -1,8 +1,8 @@
 ---
 title: EdSummariser
 emoji: 📚 
-colorFrom: inigo
-colorTo: blue
+colorFrom: red
+colorTo: indigo
 sdk: docker
 sdk_version: latest
 pinned: false

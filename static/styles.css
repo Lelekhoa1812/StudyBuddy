@@ -1,0 +1,66 @@
+/* ────────────────────────────── static/styles.css ────────────────────────────── */
+:root {
+    --bg: #0b1020;
+    --card: #12193a;
+    --text: #e6ecff;
+    --muted: #9bb0ff;
+    --accent: #7aa2ff;
+    --pill: #1f2a5c;
+    --green: #41d6a5;
+  }
+  
+  * { box-sizing: border-box; }
+  
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+    color: var(--text);
+    background: radial-gradient(1200px 600px at 20% -10%, #18225a, var(--bg));
+  }
+  
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  
+  header h1 { margin: 0 0 8px; }
+  header p { color: var(--muted); margin: 0 0 16px; }
+  
+  .card {
+    background: var(--card);
+    border: 1px solid #1f2750;
+    border-radius: 16px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  }
+  
+  label { display: block; margin: 8px 0 6px; color: var(--muted); }
+  input[type="text"], input[type="file"] {
+    width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a3570;
+    background: #0f1430; color: var(--text);
+  }
+  button {
+    margin-top: 12px;
+    background: linear-gradient(135deg, var(--accent), #5bc7ff);
+    color: #0a0f25; border: none; border-radius: 12px; padding: 10px 16px; font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.07); }
+  
+  #upload-log {
+    height: 120px; overflow: auto; background: #0f1430; padding: 10px; border-radius: 12px; border: 1px solid #2a3570;
+    color: #b9c7ff;
+  }
+  
+  #chat { display: flex; flex-direction: column; gap: 12px; }
+  #messages {
+    height: 300px; overflow: auto; background: #0f1430; padding: 12px; border-radius: 12px; border: 1px solid #2a3570;
+  }
+  .msg { padding: 10px 12px; border-radius: 12px; margin: 6px 0; max-width: 80%; white-space: pre-wrap; }
+  .msg.user { margin-left: auto; background: #173361; }
+  .msg.assistant { background: #0f244d; border: 1px solid #243a7a; }
+  .sources { margin: 8px 0; }
+  .pill { display: inline-block; background: var(--pill); padding: 4px 8px; border-radius: 999px; margin: 2px; color: #cbd6ff; border: 1px solid #304088; }
+  footer { text-align: center; color: var(--muted); margin-top: 24px; }

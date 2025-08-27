@@ -1,0 +1,47 @@
+<!-- ────────────────────────────── static/index.html ────────────────────────────── -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>StudyBuddy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📚 StudyBuddy</h1>
+      <p>Upload your PDFs/DOCX, then chat with your materials. No hallucinations — answers only come from your files.</p>
+    </header>
+
+    <section class="card">
+      <h2>1/ Upload materials</h2>
+      <form id="upload-form">
+        <label>User ID</label>
+        <input type="text" id="user_id" placeholder="e.g., user_123" required>
+        <label>Files (PDF/DOCX, multiple)</label>
+        <input type="file" id="files" multiple accept=".pdf,.docx">
+        <button type="submit">Upload</button>
+      </form>
+      <pre id="upload-log"></pre>
+    </section>
+
+    <section class="card">
+      <h2>2/ Ask questions</h2>
+      <div id="chat">
+        <div id="messages"></div>
+        <div class="chat-controls">
+          <input type="text" id="question" placeholder="Ask something about your files…">
+          <button id="ask">Ask</button>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <small>StudyBuddy RAG • FastAPI on Hugging Face Spaces • MongoDB Vector • BLIP captions</small>
+    </footer>
+  </div>
+
+  <script src="/static/scripts.js"></script>
+</body>
+</html>

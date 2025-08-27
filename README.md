@@ -11,6 +11,7 @@ short_description: Ed-Assistant summary your learning journey with Agentic RAG
 ---
 
 ### StudyBuddy
+[Access Demo](https://binkhoale1812-edsummariser.hf.space)
 
 An end-to-end RAG (Retrieval-Augmented Generation) app for studying from your own documents. Upload PDF/DOCX files, the app extracts text and images, captions images, chunks into semantic "cards", embeds and stores them in MongoDB, and serves a chat endpoint that answers strictly from your uploaded materials. Includes a lightweight chat-memory feature to improve context continuity, cost-aware model routing, and robust provider retries.
 

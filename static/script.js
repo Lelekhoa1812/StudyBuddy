@@ -8,10 +8,11 @@ const log = (msg) => {
   // Upload
   document.getElementById("upload-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const user_id = document.getElementById("user_id").value.trim();
+    const user = window.__sb_get_user && window.__sb_get_user();
+    const user_id = user && user.user_id;
     const files = document.getElementById("files").files;
     if (!user_id || files.length === 0) {
-      alert("Provide user id and at least one file.");
+      alert("Please sign in and select at least one file.");
       return;
     }
     const fd = new FormData();
@@ -27,7 +28,8 @@ const log = (msg) => {
   
   // Chat
   document.getElementById("ask").addEventListener("click", async () => {
-    const user_id = document.getElementById("user_id").value.trim();
+    const user = window.__sb_get_user && window.__sb_get_user();
+    const user_id = user && user.user_id;
     const q = document.getElementById("question").value.trim();
     if (!user_id || !q) return;
     appendMessage("user", q);
@@ -55,7 +57,7 @@ const log = (msg) => {
     m.className = "msg " + role;
     m.textContent = text;
     document.getElementById("messages").appendChild(m);
-    m.scrollIntoView({ behavior: "smooth", block: "end" });
+    requestAnimationFrame(() => m.scrollIntoView({ behavior: "smooth", block: "end" }));
   }
   
   function appendSources(sources) {
@@ -68,5 +70,16 @@ const log = (msg) => {
       return `<span class="pill">${f}${t}${p}</span>`;
     }).join(" ");
     document.getElementById("messages").appendChild(wrap);
-    wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+    requestAnimationFrame(() => wrap.scrollIntoView({ behavior: "smooth", block: "end" }));
   }
+
+  // Reveal on scroll
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        observer.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));

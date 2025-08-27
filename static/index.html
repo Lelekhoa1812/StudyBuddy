@@ -12,13 +12,18 @@
     <header>
       <h1>📚 StudyBuddy</h1>
       <p>Upload your PDFs/DOCX, then chat with your materials. No hallucinations — answers only come from your files.</p>
+      <div class="auth-controls">
+        <span id="auth-status">Not signed in</span>
+        <button id="open-auth">Sign in / Create account</button>
+        <button id="logout" class="secondary" style="display:none;">Logout</button>
+        <button id="theme-toggle" class="secondary" title="Toggle theme">🌙</button>
+      </div>
     </header>
 
-    <section class="card">
+    <section class="card reveal">
       <h2>1/ Upload materials</h2>
       <form id="upload-form">
-        <label>User ID</label>
-        <input type="text" id="user_id" placeholder="e.g., user_123" required>
+        <div class="hint">You must be signed in. Your user ID is managed automatically.</div>
         <label>Files (PDF/DOCX, multiple)</label>
         <input type="file" id="files" multiple accept=".pdf,.docx">
         <button type="submit">Upload</button>
@@ -26,7 +31,7 @@
       <pre id="upload-log"></pre>
     </section>
 
-    <section class="card">
+    <section class="card reveal">
       <h2>2/ Ask questions</h2>
       <div id="chat">
         <div id="messages"></div>
@@ -42,6 +47,38 @@
     </footer>
   </div>
 
-  <script src="/static/scripts.js"></script>
+  <!-- Auth Modal -->
+  <div id="auth-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="auth-title">
+    <div class="modal-content">
+      <button class="modal-close" id="close-auth" aria-label="Close">×</button>
+      <h2 id="auth-title">Welcome to StudyBuddy</h2>
+      <p class="modal-subtitle">Create an account or sign in to continue</p>
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Login</button>
+        <button class="tab" data-tab="signup">Create account</button>
+      </div>
+      <div class="tab-body" id="tab-login">
+        <form id="login-form">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="you@example.com" required>
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required>
+          <button type="submit">Sign in</button>
+        </form>
+      </div>
+      <div class="tab-body hidden" id="tab-signup">
+        <form id="signup-form">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="you@example.com" required>
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="At least 8 characters" minlength="8" required>
+          <button type="submit">Create account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/auth.js"></script>
+  <script src="/static/script.js"></script>
 </body>
 </html>

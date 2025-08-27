@@ -21,7 +21,7 @@ WORKDIR /app
 COPY . .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Hugging Face cache directories
 ENV HF_HOME="/home/user/.cache/huggingface"
@@ -37,7 +37,8 @@ ENV PRELOAD_TRANSLATORS="0"
 ENV EMBEDDING_HALF="0"
 
 # Preload embedding model and warmup
-RUN python /app/dw_model.py && python /app/warmup.py
+RUN test -f /app/dw_model.py && python /app/dw_model.py || true
+RUN test -f /app/warmup.py && python /app/warmup.py || true
 
 # Ensure ownership stays correct
 RUN chown -R user:user /app/model_cache

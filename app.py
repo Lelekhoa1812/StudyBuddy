@@ -595,28 +595,53 @@ async def chat(
     from utils.router import NVIDIA_SMALL  # reuse default name
     memory = app.state.__dict__.setdefault("memory_lru", MemoryLRU())
 
-    # 0) If question is about a specific file, return the file summary
-    m = re.search(r"what\s+is\s+the\s+(.+?\.(pdf|docx))\s+about\??", question, re.IGNORECASE)
-    # If the question is about a specific file, return the file summary
-    if m:
-        fn = m.group(1)
-        doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=fn)
-        if doc:
-            return ChatAnswerResponse(
-                answer=doc.get("summary", ""), 
-                sources=[{"filename": fn, "file_summary": True}]
-            )
-        else:
-            return ChatAnswerResponse(
-                answer="I couldn't find a summary for that file in your library.", 
-                sources=[]
-            )
+    # 0) Detect any filenames mentioned in the question (e.g., JADE.pdf)
+    #    Supports .pdf, .docx, and .doc for detection purposes
+    mentioned = set([m.group(0) for m in re.finditer(r"[\w\-\. ]+\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
+
+    # 0a) If the question explicitly asks for a summary/about of a single mentioned file, return its summary directly
+    if mentioned and (re.search(r"\b(summary|summarize|about|overview)\b", question, re.IGNORECASE)):
+        # Prefer direct summary when exactly one file is referenced
+        if len(mentioned) == 1:
+            fn = next(iter(mentioned))
+            doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=fn)
+            if doc:
+                return ChatAnswerResponse(
+                    answer=doc.get("summary", ""),
+                    sources=[{"filename": fn, "file_summary": True}]
+                )
+            # If not found with the same casing, try case-insensitive match against stored filenames
+            files_ci = rag.list_files(user_id=user_id, project_id=project_id)
+            match = next((f["filename"] for f in files_ci if f.get("filename", "").lower() == fn.lower()), None)
+            if match:
+                doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=match)
+                if doc:
+                    return ChatAnswerResponse(
+                        answer=doc.get("summary", ""),
+                        sources=[{"filename": match, "file_summary": True}]
+                    )
+        # If multiple files are referenced with summary intent, proceed to relevance flow below
         
     # 1) Preload file list + summaries
     files_list = rag.list_files(user_id=user_id, project_id=project_id)  # [{filename, summary}]
-    # Ask NVIDIA to mark relevance per file
+
+    # 1a) Normalize mentioned filenames against the user's library (case-insensitive)
+    filenames_ci_map = {f.get("filename", "").lower(): f.get("filename") for f in files_list if f.get("filename")}
+    mentioned_normalized = []
+    for mfn in mentioned:
+        key = mfn.lower()
+        if key in filenames_ci_map:
+            mentioned_normalized.append(filenames_ci_map[key])
+
+    # 1b) Ask NVIDIA to mark relevance per file
     relevant_map = await files_relevance(question, files_list, nvidia_rotator)
     relevant_files = [fn for fn, ok in relevant_map.items() if ok]
+
+    # 1c) Ensure any explicitly mentioned files in the question are included
+    #     This safeguards against model misclassification
+    if mentioned_normalized:
+        extra = [fn for fn in mentioned_normalized if fn not in relevant_files]
+        relevant_files.extend(extra)
 
     # 2) Memory context: recent 3 via NVIDIA, remaining 17 via semantic
     # recent 3 related (we do a simple include-all; NVIDIA will prune by "related" selection using the same mechanism as files_relevance but here handled in history)
@@ -648,7 +673,13 @@ async def chat(
 
     # 3) RAG vector search (restricted to relevant files if any)
     q_vec = embedder.embed([question])[0]
-    hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=k, filenames=relevant_files if relevant_files else None)
+    hits = rag.vector_search(
+        user_id=user_id,
+        project_id=project_id,
+        query_vector=q_vec,
+        k=k,
+        filenames=relevant_files if relevant_files else None
+    )
     if not hits:
         return ChatAnswerResponse(
             answer="I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",

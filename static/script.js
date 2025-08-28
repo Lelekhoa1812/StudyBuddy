@@ -167,13 +167,18 @@
       list.innerHTML = '<div class="muted">No files in this project.</div>';
       return;
     }
-    list.innerHTML = files.map(f => `
-      <div class="file-card">
+    list.innerHTML = files.map((f, idx) => `
+      <div class="file-card" data-idx="${idx}">
         <div class="file-card-head">
           <div class="file-name">${f.filename}</div>
-          <button class="file-del" data-fn="${encodeURIComponent(f.filename)}" title="Delete">🗑️</button>
         </div>
-        <div class="file-summary">${(f.summary || '').replace(/</g,'&lt;')}</div>
+        <div class="file-summary" id="file-summary-${idx}">${(f.summary || '').replace(/</g,'&lt;')}</div>
+        <div class="file-card-actions">
+          <button class="see-more-btn" data-idx="${idx}">… See more</button>
+          <div class="file-actions-right">
+            <button class="btn-danger file-del" data-fn="${encodeURIComponent(f.filename)}" title="Delete">Delete</button>
+          </div>
+        </div>
       </div>
     `).join('');
     // bind deletes
@@ -192,6 +197,16 @@
             alert('Failed to delete file');
           }
         } catch {}
+      });
+    });
+    // bind see more/less
+    list.querySelectorAll('.see-more-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = btn.getAttribute('data-idx');
+        const summary = document.getElementById(`file-summary-${idx}`);
+        if (!summary) return;
+        const expanded = summary.classList.toggle('expanded');
+        btn.textContent = expanded ? 'See less' : '… See more';
       });
     });
   }

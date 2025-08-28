@@ -137,6 +137,71 @@
     });
   }
 
+  // Stored files view
+  async function loadStoredFiles() {
+    const user = window.__sb_get_user();
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    if (!user || !currentProject) return;
+    try {
+      const res = await fetch(`/files?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      renderStoredFiles(data.files || []);
+      window.__sb_current_filenames = new Set((data.filenames || []).map(f => (f || '').toLowerCase()));
+    } catch {}
+  }
+
+  function renderStoredFiles(files) {
+    const container = document.getElementById('stored-file-items');
+    if (!container) return;
+    if (!files || files.length === 0) {
+      container.innerHTML = '<div class="muted">No files stored yet.</div>';
+      return;
+    }
+    container.innerHTML = files.map(f => `<div class="pill">${f.filename}</div>`).join(' ');
+  }
+
+  // Duplicate detection: returns {toUpload, replace, renameMap}
+  async function resolveDuplicates(files) {
+    const existing = window.__sb_current_filenames || new Set();
+    const toUpload = [];
+    const replace = [];
+    const renameMap = {};
+    for (const f of files) {
+      const name = f.name;
+      if (existing.has(name.toLowerCase())) {
+        const choice = await promptDuplicateChoice(name);
+        if (choice === 'cancel') {
+          // skip this file
+        } else if (choice === 'replace') {
+          replace.push(name);
+          toUpload.push(f);
+        } else if (choice && choice.startsWith('rename:')) {
+          const newName = choice.slice(7);
+          // create a new File with newName
+          const renamed = new File([f], newName, { type: f.type, lastModified: f.lastModified });
+          renameMap[name] = newName;
+          toUpload.push(renamed);
+        }
+      } else {
+        toUpload.push(f);
+      }
+    }
+    return { toUpload, replace, renameMap };
+  }
+
+  function promptDuplicateChoice(filename) {
+    return new Promise((resolve) => {
+      // Minimal UX: use confirm/prompt; can be replaced with real modal later
+      const msg = `A similar file named ${filename} already exists.\nChoose: [Cancel] to skip, [OK] to choose Replace or Rename.`;
+      if (!confirm(msg)) { resolve('cancel'); return; }
+      const answer = prompt('Type "replace" to overwrite, or enter a new filename to rename:', 'replace');
+      if (!answer) { resolve('cancel'); return; }
+      if (answer.trim().toLowerCase() === 'replace') { resolve('replace'); return; }
+      resolve('rename:' + answer.trim());
+    });
+  }
+
   function removeFile(index) {
     selectedFiles.splice(index, 1);
     updateFileList();
@@ -191,10 +256,24 @@
     showUploadProgress();
 
     try {
+      // Check duplicates against server list first
+      await loadStoredFiles();
+      const { toUpload, replace, renameMap } = await resolveDuplicates(selectedFiles);
+      if (toUpload.length === 0) {
+        updateProgressStatus('No files to upload');
+        setTimeout(() => hideUploadProgress(), 1000);
+        return;
+      }
       const formData = new FormData();
       formData.append('user_id', user.user_id);
       formData.append('project_id', currentProject.project_id);
-      selectedFiles.forEach(file => formData.append('files', file));
+      toUpload.forEach(file => formData.append('files', file));
+      if (replace.length > 0) {
+        formData.append('replace_filenames', JSON.stringify(replace));
+      }
+      if (Object.keys(renameMap).length > 0) {
+        formData.append('rename_map', JSON.stringify(renameMap));
+      }
 
       const response = await fetch('/upload', { method: 'POST', body: formData });
       const data = await response.json();
@@ -206,7 +285,9 @@
         logProgress('Files uploaded successfully');
         
         // Poll backend for real progress
-        startUploadStatusPolling(data.job_id, data.total_files || selectedFiles.length);
+        startUploadStatusPolling(data.job_id, data.total_files || toUpload.length);
+        // Refresh stored files list after a short delay
+        setTimeout(loadStoredFiles, 2000);
       } else {
         throw new Error(data.detail || 'Upload failed');
       }
@@ -275,6 +356,8 @@
           logProgress('You can now start chatting with your documents');
           setTimeout(() => hideUploadProgress(), 1500);
           enableChat();
+          // Final refresh of stored files
+          setTimeout(loadStoredFiles, 1000);
         }
       } catch (e) {
         clearInterval(interval);

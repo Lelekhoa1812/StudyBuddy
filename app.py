@@ -364,6 +364,8 @@ async def upload_files(
     user_id: str = Form(...),
     project_id: str = Form(...),
     files: List[UploadFile] = File(...),
+    replace_filenames: Optional[str] = Form(None),  # JSON array of filenames to replace
+    rename_map: Optional[str] = Form(None),         # JSON object {original: newname}
 ):
     """
     Ingest many files: PDF/DOCX.
@@ -384,13 +386,28 @@ async def upload_files(
     if len(files) > max_files:
         raise HTTPException(400, detail=f"Too many files. Max {max_files} allowed per upload.")
 
-    # Read file bytes upfront to avoid reading from closed streams in background task
+    # Parse replace/rename directives
+    replace_set = set()
+    try:
+        if replace_filenames:
+            replace_set = set(json.loads(replace_filenames))
+    except Exception:
+        pass
+    rename_dict: Dict[str, str] = {}
+    try:
+        if rename_map:
+            rename_dict = json.loads(rename_map)
+    except Exception:
+        pass
+
     preloaded_files = []
     for uf in files:
         raw = await uf.read()
         if len(raw) > max_mb * 1024 * 1024:
             raise HTTPException(400, detail=f"{uf.filename} exceeds {max_mb} MB limit")
-        preloaded_files.append((uf.filename, raw))
+        # Apply rename if present
+        eff_name = rename_dict.get(uf.filename, uf.filename)
+        preloaded_files.append((eff_name, raw))
 
     # Initialize job status
     app.state.jobs[job_id] = {
@@ -405,6 +422,14 @@ async def upload_files(
     async def _process_all():
         for idx, (fname, raw) in enumerate(preloaded_files, start=1):
             try:
+                # If instructed to replace this filename, remove previous data first
+                if fname in replace_set:
+                    try:
+                        rag.db["chunks"].delete_many({"user_id": user_id, "project_id": project_id, "filename": fname})
+                        rag.db["files"].delete_many({"user_id": user_id, "project_id": project_id, "filename": fname})
+                        logger.info(f"[{job_id}] Replaced prior data for {fname}")
+                    except Exception as de:
+                        logger.warning(f"[{job_id}] Replace delete failed for {fname}: {de}")
                 logger.info(f"[{job_id}] ({idx}/{len(preloaded_files)}) Parsing {fname} ({len(raw)} bytes)")
 
                 # Extract pages from file
@@ -491,11 +516,19 @@ async def upload_status(job_id: str):
     }
 
 
+@app.get("/files")
+async def list_project_files(user_id: str, project_id: str):
+    """Return stored filenames and summaries for a project."""
+    files = rag.list_files(user_id=user_id, project_id=project_id)
+    # Ensure filenames list
+    filenames = [f.get("filename") for f in files if f.get("filename")]
+    return {"files": files, "filenames": filenames}
+
+
 @app.get("/cards")
 def list_cards(user_id: str, project_id: str, filename: Optional[str] = None, limit: int = 50, skip: int = 0):
     """List cards for a project"""
     cards = rag.list_cards(user_id=user_id, project_id=project_id, filename=filename, limit=limit, skip=skip)
-    
     # Ensure all cards are JSON serializable
     serializable_cards = []
     for card in cards:
@@ -508,7 +541,7 @@ def list_cards(user_id: str, project_id: str, filename: Optional[str] = None, li
             else:
                 serializable_card[key] = value
         serializable_cards.append(serializable_card)
-    
+    # Sort cards by topic_name
     return {"cards": serializable_cards}
 
 

@@ -119,7 +119,7 @@ class RAGStore:
                         },
                     }
                 },
-                {"$project": {"embedding": 0, "score": {"$meta": "searchScore"}, "doc": "$$ROOT"}},
+                {"$project": {"doc": "$$ROOT", "score": {"$meta": "searchScore"}}},
                 {"$limit": k},
             ]
             # Append hit scoring algorithm

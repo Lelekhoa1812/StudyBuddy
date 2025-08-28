@@ -152,6 +152,10 @@
     if (window.__sb_update_upload_button) {
       window.__sb_update_upload_button();
     }
+    // Ensure stored files are loaded immediately
+    if (window.__sb_load_stored_files) {
+      window.__sb_load_stored_files();
+    }
   }
 
   function showWelcomeScreen() {

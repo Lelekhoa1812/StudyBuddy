@@ -546,6 +546,19 @@
     }
   });
 
+  // Load stored files whenever project changes
+  document.addEventListener('projectChanged', () => {
+    loadStoredFiles();
+  });
+
+  // Expose to other scripts
+  window.__sb_load_stored_files = loadStoredFiles;
+
+  // Also attempt loading stored files after initial auth/project load
+  window.addEventListener('load', () => {
+    setTimeout(loadStoredFiles, 500);
+  });
+
   // Reveal animations
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {

@@ -1,7 +1,7 @@
 # ────────────────────────────── utils/chunker.py ──────────────────────────────
 import re
 from typing import List, Dict, Any
-from .summarizer import cheap_summarize
+from .summarizer import cheap_summarize, clean_chunk_text
 from .common import split_sentences, slugify
 from .logger import get_logger
 
@@ -13,6 +13,7 @@ from .logger import get_logger
 MAX_WORDS = 500
 MIN_WORDS = 150
 logger = get_logger("CHUNKER", __name__)
+
 
 def _by_headings(text: str):
     # split on markdown-like or outline headings
@@ -32,7 +33,7 @@ def _by_headings(text: str):
     return parts
 
 
-def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: str, project_id: str) -> List[Dict[str, Any]]:
+async def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: str, project_id: str) -> List[Dict[str, Any]]:
     # Concatenate pages but keep page spans for metadata
     full = ""
     page_markers = []
@@ -64,11 +65,13 @@ def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: 
 
     # Build card dicts
     out = []
-    for i, content in enumerate(cards, 1):
-        topic = cheap_summarize(content, max_sentences=1)
+    for i, raw_content in enumerate(cards, 1):
+        # Clean with LLM to remove headers/footers and IDs
+        cleaned = await clean_chunk_text(raw_content)
+        topic = await cheap_summarize(cleaned, max_sentences=1)
         if not topic:
-            topic = content[:80] + "..."
-        summary = cheap_summarize(content, max_sentences=3)
+            topic = cleaned[:80] + "..."
+        summary = await cheap_summarize(cleaned, max_sentences=3)
         # Estimate page span
         first_page = pages[0]['page_num'] if pages else 1
         last_page = pages[-1]['page_num'] if pages else 1
@@ -78,7 +81,7 @@ def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: 
             "filename": filename,
             "topic_name": topic[:120],
             "summary": summary,
-            "content": content,
+            "content": cleaned,
             "page_span": [first_page, last_page],
             "card_id": f"{slugify(filename)}-c{i:04d}"
         })

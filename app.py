@@ -53,6 +53,7 @@ class MessageResponse(BaseModel):
 class UploadResponse(BaseModel):
     job_id: str
     status: str
+    total_files: Optional[int] = None
 
 class FileSummaryResponse(BaseModel):
     filename: str
@@ -80,6 +81,9 @@ app.add_middleware(
 
 # Serve static files (index.html, scripts.js, styles.css)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# In-memory job tracker (for progress queries)
+app.state.jobs = {}
 
 
 # ────────────────────────────── Global Clients ──────────────────────────────
@@ -374,11 +378,28 @@ async def upload_files(
     """
     job_id = str(uuid.uuid4())
 
+    # Basic upload policy limits
+    max_files = int(os.getenv("MAX_FILES_PER_UPLOAD", "15"))
+    max_mb = int(os.getenv("MAX_FILE_MB", "50"))
+    if len(files) > max_files:
+        raise HTTPException(400, detail=f"Too many files. Max {max_files} allowed per upload.")
+
     # Read file bytes upfront to avoid reading from closed streams in background task
     preloaded_files = []
     for uf in files:
         raw = await uf.read()
+        if len(raw) > max_mb * 1024 * 1024:
+            raise HTTPException(400, detail=f"{uf.filename} exceeds {max_mb} MB limit")
         preloaded_files.append((uf.filename, raw))
+
+    # Initialize job status
+    app.state.jobs[job_id] = {
+        "created_at": time.time(),
+        "total": len(preloaded_files),
+        "completed": 0,
+        "status": "processing",
+        "last_error": None,
+    }
 
     # Single background task: process files sequentially with isolation
     async def _process_all():
@@ -411,7 +432,7 @@ async def upload_files(
                         p["text"] = (p.get("text", "") + "\n\n" + "\n".join([f"[Image] {c}" for c in caps])).strip()
 
                 # Build cards
-                cards = build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
+                cards = await build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
                 logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
 
                 # Embed & store
@@ -426,16 +447,48 @@ async def upload_files(
                 file_summary = await cheap_summarize(full_text, max_sentences=6)
                 rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
                 logger.info(f"[{job_id}] Completed {fname}")
+                # Update job progress
+                job = app.state.jobs.get(job_id)
+                if job:
+                    job["completed"] = idx
+                    job["status"] = "processing" if idx < job.get("total", 0) else "completed"
             except Exception as e:
                 logger.error(f"[{job_id}] Failed processing {fname}: {e}")
+                job = app.state.jobs.get(job_id)
+                if job:
+                    job["last_error"] = str(e)
+                    job["completed"] = idx  # count as completed attempt
             finally:
                 # Yield control between files to keep loop responsive
                 await asyncio.sleep(0)
 
         logger.info(f"[{job_id}] Ingestion complete for {len(preloaded_files)} files")
+        # Finalize job status
+        job = app.state.jobs.get(job_id)
+        if job:
+            job["status"] = "completed"
 
     background_tasks.add_task(_process_all)
-    return UploadResponse(job_id=job_id, status="processing")
+    return UploadResponse(job_id=job_id, status="processing", total_files=len(preloaded_files))
+
+
+@app.get("/upload/status")
+async def upload_status(job_id: str):
+    job = app.state.jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, detail="Job not found")
+    percent = 0
+    if job.get("total"):
+        percent = int(round((job.get("completed", 0) / job.get("total", 1)) * 100))
+    return {
+        "job_id": job_id,
+        "status": job.get("status"),
+        "completed": job.get("completed"),
+        "total": job.get("total"),
+        "percent": percent,
+        "last_error": job.get("last_error"),
+        "created_at": job.get("created_at"),
+    }
 
 
 @app.get("/cards")

@@ -205,8 +205,8 @@
         logProgress(`Job ID: ${data.job_id}`);
         logProgress('Files uploaded successfully');
         
-        // Deterministic per-file progression
-        simulateProcessing(selectedFiles.length);
+        // Poll backend for real progress
+        startUploadStatusPolling(data.job_id, data.total_files || selectedFiles.length);
       } else {
         throw new Error(data.detail || 'Upload failed');
       }
@@ -248,35 +248,40 @@
     progressLog.scrollTop = progressLog.scrollHeight;
   }
 
-  function simulateProcessing(totalFiles) {
-    // Split 100% evenly across files. Round to nearest integer.
-    let completed = 0;
-    const step = Math.round(100 / Math.max(totalFiles, 1));
-    const targets = Array.from({ length: totalFiles }, (_, i) => Math.min(100, Math.round(((i + 1) / totalFiles) * 100)));
-
-    function advance() {
-      if (completed >= totalFiles) {
-        updateProgressFill(100);
-        updateProgressStatus('Processing complete!');
-        logProgress('All documents processed successfully');
-        logProgress('You can now start chatting with your documents');
-        setTimeout(() => hideUploadProgress(), 1500);
-        enableChat();
-        return;
+  function startUploadStatusPolling(jobId, totalFiles) {
+    let stopped = false;
+    const interval = setInterval(async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch(`/upload/status?job_id=${encodeURIComponent(jobId)}`);
+        if (!res.ok) {
+          throw new Error('Status not available');
+        }
+        const status = await res.json();
+        const percent = Math.max(0, Math.min(100, parseInt(status.percent || 0, 10)));
+        const completed = status.completed || 0;
+        const total = status.total || totalFiles || 1;
+        updateProgressFill(percent);
+        updateProgressStatus(`Processing documents... ${percent}% (${completed}/${total})`);
+        if (status.last_error) {
+          logProgress(`Warning: ${status.last_error}`);
+        }
+        if (status.status === 'completed' || percent >= 100) {
+          clearInterval(interval);
+          stopped = true;
+          updateProgressFill(100);
+          updateProgressStatus('Processing complete!');
+          logProgress('All documents processed successfully');
+          logProgress('You can now start chatting with your documents');
+          setTimeout(() => hideUploadProgress(), 1500);
+          enableChat();
+        }
+      } catch (e) {
+        clearInterval(interval);
+        stopped = true;
+        logProgress(`Error reading job status: ${e.message}`);
       }
-
-      const currentTarget = targets[completed];
-      updateProgressFill(currentTarget);
-      updateProgressStatus(`Processing documents... ${currentTarget}%`);
-      logProgress(`Finished processing file ${completed + 1}/${totalFiles}`);
-      completed += 1;
-
-      // Wait a short time before next step (simulated, since backend is background)
-      setTimeout(advance, 1200);
-    }
-
-    // kick off first step after a short delay to show feedback
-    setTimeout(advance, 800);
+    }, 1200);
   }
 
   function enableChat() {

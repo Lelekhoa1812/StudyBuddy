@@ -75,10 +75,29 @@
     askBtn.addEventListener('click', handleAsk);
     questionInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
+        e.preventDefault();
         handleAsk();
       }
     });
+
+    // Clear chat history
+    const clearBtn = document.getElementById('clear-chat-btn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async () => {
+        const user = window.__sb_get_user();
+        const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+        if (!user || !currentProject) return;
+        if (!confirm('Clear chat history for this project?')) return;
+        try {
+          const res = await fetch(`/chat/history?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}`, { method: 'DELETE' });
+          if (res.ok) {
+            document.getElementById('messages').innerHTML = '';
+          } else {
+            alert('Failed to clear history');
+          }
+        } catch {}
+      });
+    }
   }
 
   function handleFileSelection(files) {

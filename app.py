@@ -328,6 +328,16 @@ async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
     return ChatHistoryResponse(messages=messages)
 
 
+@app.delete("/chat/history", response_model=MessageResponse)
+async def delete_chat_history(user_id: str, project_id: str):
+    try:
+        rag.db["chat_sessions"].delete_many({"user_id": user_id, "project_id": project_id})
+        logger.info(f"[CHAT] Cleared history for user {user_id} project {project_id}")
+        return MessageResponse(message="Chat history cleared")
+    except Exception as e:
+        raise HTTPException(500, detail=f"Failed to clear chat history: {str(e)}")
+
+
 # ────────────────────────────── Helpers ──────────────────────────────
 def _infer_mime(filename: str) -> str:
     lower = filename.lower()

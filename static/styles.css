@@ -833,6 +833,24 @@
   resize: none;
 }
 
+.chat-underbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.report-link {
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  user-select: none;
+}
+
+.report-link.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 #question:focus {
   outline: none;
   border-color: var(--accent);

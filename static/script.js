@@ -14,7 +14,7 @@
   const askBtn = document.getElementById('ask');
   const chatHint = document.getElementById('chat-hint');
   const messages = document.getElementById('messages');
-  const reportToggle = document.getElementById('report-toggle');
+  const reportLink = document.getElementById('report-link');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingMessage = document.getElementById('loading-message');
 
@@ -101,9 +101,12 @@
         } catch {}
       });
     }
-    // Report trigger button
-    if (reportToggle) {
-      reportToggle.addEventListener('click', handleGenerateReport);
+    // Report link toggle
+    if (reportLink) {
+      reportLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleReportMode();
+      });
     }
   }
 
@@ -175,10 +178,10 @@
       const files = data.files || [];
       renderStoredFiles(files);
       // Enable Report button when at least one file exists
-      if (reportToggle) {
-        reportToggle.disabled = (files.length === 0);
-        reportToggle.title = 'Generate report from selected document';
-        reportToggle.classList.toggle('enabled', !reportToggle.disabled);
+      if (reportLink) {
+        // Disable visually by muted color when no files
+        reportLink.style.pointerEvents = (files.length === 0) ? 'none' : 'auto';
+        reportLink.title = 'Generate report from selected document';
       }
       window.__sb_current_filenames = new Set((data.filenames || []).map(f => (f || '').toLowerCase()));
     } catch {}
@@ -496,31 +499,42 @@
     showButtonLoading(askBtn, true);
 
     try {
-      const formData = new FormData();
-      formData.append('user_id', user.user_id);
-      formData.append('project_id', currentProject.project_id);
-      formData.append('question', question);
-      formData.append('k', '6');
-
-      const response = await fetch('/chat', { method: 'POST', body: formData });
-      const data = await response.json();
-
-      if (response.ok) {
-        // Remove thinking message
-        thinkingMsg.remove();
-        
-        // Add assistant response
-        appendMessage('assistant', data.answer || 'No answer received');
-        
-        // Save assistant message to chat history
-        await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.answer || 'No answer received');
-        
-        // Add sources if available
-        if (data.sources && data.sources.length > 0) {
-        appendSources(data.sources);
+      // Branch: if report mode is active → call /report with textarea as instructions
+      if (isReportModeActive()) {
+        const filename = pickActiveFilename();
+        if (!filename) throw new Error('Please select a document to generate a report');
+        const form = new FormData();
+        form.append('user_id', user.user_id);
+        form.append('project_id', currentProject.project_id);
+        form.append('filename', filename);
+        form.append('outline_words', '200');
+        form.append('report_words', '1200');
+        form.append('instructions', question);
+        const response = await fetch('/report', { method: 'POST', body: form });
+        const data = await response.json();
+        if (response.ok) {
+          thinkingMsg.remove();
+          appendMessage('assistant', data.report_markdown || 'No report');
+          if (data.sources && data.sources.length) appendSources(data.sources);
+        } else {
+          throw new Error(data.detail || 'Failed to generate report');
         }
       } else {
-        throw new Error(data.detail || 'Failed to get answer');
+        const formData = new FormData();
+        formData.append('user_id', user.user_id);
+        formData.append('project_id', currentProject.project_id);
+        formData.append('question', question);
+        formData.append('k', '6');
+        const response = await fetch('/chat', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (response.ok) {
+          thinkingMsg.remove();
+          appendMessage('assistant', data.answer || 'No answer received');
+          await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.answer || 'No answer received');
+          if (data.sources && data.sources.length > 0) appendSources(data.sources);
+        } else {
+          throw new Error(data.detail || 'Failed to get answer');
+        }
       }
     } catch (error) {
       thinkingMsg.remove();
@@ -534,6 +548,22 @@
       showButtonLoading(askBtn, false);
       questionInput.focus();
     }
+  }
+
+  function toggleReportMode() {
+    if (!reportLink) return;
+    reportLink.classList.toggle('active');
+  }
+
+  function isReportModeActive() {
+    return reportLink && reportLink.classList.contains('active');
+  }
+
+  function pickActiveFilename() {
+    const candidates = Array.from(document.querySelectorAll('#stored-file-items .pill'));
+    let active = candidates.find(el => el.classList.contains('active'));
+    if (!active && candidates.length) active = candidates[0];
+    return active ? active.textContent.trim() : '';
   }
 
   function autoGrowTextarea() {
@@ -590,10 +620,8 @@
     if (tgt && tgt.classList && tgt.classList.contains('pill') && tgt.parentElement && tgt.parentElement.id === 'stored-file-items') {
       document.querySelectorAll('#stored-file-items .pill').forEach(el => el.classList.remove('active'));
       tgt.classList.add('active');
-      if (reportToggle) {
-        reportToggle.disabled = false;
-        reportToggle.classList.add('enabled');
-      }
+      // Enable link visually
+      if (reportLink) reportLink.classList.add('active');
     }
   });
 

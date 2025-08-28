@@ -30,3 +30,10 @@ class MemoryLRU:
 
     def all(self, user_id: str) -> List[str]:
         return list(self._store[user_id])
+
+    def clear(self, user_id: str) -> None:
+        """
+        Clear all cached summaries for the given user.
+        """
+        if user_id in self._store:
+            self._store[user_id].clear()

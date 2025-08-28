@@ -201,13 +201,16 @@
               <div id="messages"></div>
               <div class="chat-controls" id="chat-controls">
                 <div class="chat-input-wrapper">
-                  <input type="text" id="question" placeholder="Ask something about your documents..." disabled>
+                  <textarea id="question" placeholder="Ask something about your documents..." rows="2" disabled></textarea>
                   <button id="ask" class="btn-primary" disabled>
                     <span class="btn-text">Ask</span>
                     <span class="btn-loading" style="display:none;">
                       <div class="spinner"></div>
                       Thinking...
                     </span>
+                  </button>
+                  <button id="report-toggle" class="btn-secondary btn-muted" title="Generate report from selected document" disabled>
+                    Report
                   </button>
                 </div>
                 <div class="chat-hint" id="chat-hint">

@@ -14,6 +14,7 @@
   const askBtn = document.getElementById('ask');
   const chatHint = document.getElementById('chat-hint');
   const messages = document.getElementById('messages');
+  const reportToggle = document.getElementById('report-toggle');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingMessage = document.getElementById('loading-message');
 
@@ -73,12 +74,14 @@
     
     // Chat
     askBtn.addEventListener('click', handleAsk);
-    questionInput.addEventListener('keypress', (e) => {
+    // Convert to textarea behavior: Enter submits, Shift+Enter for newline
+    questionInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleAsk();
       }
     });
+    questionInput.addEventListener('input', autoGrowTextarea);
 
     // Clear chat history
     const clearBtn = document.getElementById('clear-chat-btn');
@@ -97,6 +100,10 @@
           }
         } catch {}
       });
+    }
+    // Report trigger button
+    if (reportToggle) {
+      reportToggle.addEventListener('click', handleGenerateReport);
     }
   }
 
@@ -165,7 +172,14 @@
       const res = await fetch(`/files?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}`);
       if (!res.ok) return;
       const data = await res.json();
-      renderStoredFiles(data.files || []);
+      const files = data.files || [];
+      renderStoredFiles(files);
+      // Enable Report button when at least one file exists
+      if (reportToggle) {
+        reportToggle.disabled = (files.length === 0);
+        reportToggle.title = 'Generate report from selected document';
+        reportToggle.classList.toggle('enabled', !reportToggle.disabled);
+      }
       window.__sb_current_filenames = new Set((data.filenames || []).map(f => (f || '').toLowerCase()));
     } catch {}
   }
@@ -445,6 +459,7 @@
     questionInput.disabled = false;
     askBtn.disabled = false;
     chatHint.style.display = 'none';
+    autoGrowTextarea();
   }
 
   async function handleAsk() {
@@ -467,6 +482,7 @@
     // Add user message
     appendMessage('user', question);
     questionInput.value = '';
+    autoGrowTextarea();
 
     // Save user message to chat history
     await saveChatMessage(user.user_id, currentProject.project_id, 'user', question);
@@ -519,6 +535,67 @@
       questionInput.focus();
     }
   }
+
+  function autoGrowTextarea() {
+    if (!questionInput) return;
+    questionInput.style.height = 'auto';
+    const lineHeight = 22; // approx for 16px font
+    const minRows = 2;
+    const maxRows = 7;
+    const lines = Math.min(maxRows, Math.max(minRows, Math.ceil(questionInput.scrollHeight / lineHeight)));
+    questionInput.rows = lines;
+  }
+
+  async function handleGenerateReport() {
+    const user = window.__sb_get_user();
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    if (!user || !currentProject) {
+      alert('Please sign in and select a project');
+      return;
+    }
+    // Determine selected/active file from files section; fallback to first
+    const candidates = Array.from(document.querySelectorAll('#stored-file-items .pill'));
+    let active = candidates.find(el => el.classList.contains('active'));
+    if (!active && candidates.length) active = candidates[0];
+    if (!active) { alert('Please upload and select a document first'); return; }
+    const filename = active.textContent.trim();
+    const instructions = (questionInput && questionInput.value || '').trim();
+    showLoading('Generating report...');
+    try {
+      const form = new FormData();
+      form.append('user_id', user.user_id);
+      form.append('project_id', currentProject.project_id);
+      form.append('filename', filename);
+      form.append('outline_words', '200');
+      form.append('report_words', '1200');
+      form.append('instructions', instructions);
+      const res = await fetch('/report', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Report failed');
+      // Append as assistant message
+      appendMessage('assistant', data.report_markdown || 'No report');
+      if (data.sources && data.sources.length) {
+        appendSources(data.sources);
+      }
+    } catch (e) {
+      alert(e.message || 'Failed to generate report');
+    } finally {
+      hideLoading();
+    }
+  }
+
+  // Toggle active file pill selection
+  document.addEventListener('click', (e) => {
+    const tgt = e.target;
+    if (tgt && tgt.classList && tgt.classList.contains('pill') && tgt.parentElement && tgt.parentElement.id === 'stored-file-items') {
+      document.querySelectorAll('#stored-file-items .pill').forEach(el => el.classList.remove('active'));
+      tgt.classList.add('active');
+      if (reportToggle) {
+        reportToggle.disabled = false;
+        reportToggle.classList.add('enabled');
+      }
+    }
+  });
 
   async function saveChatMessage(userId, projectId, role, content) {
     try {

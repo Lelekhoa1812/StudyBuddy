@@ -67,6 +67,11 @@ class ChatAnswerResponse(BaseModel):
 class HealthResponse(BaseModel):
     ok: bool
 
+class ReportResponse(BaseModel):
+    filename: str
+    report_markdown: str
+    sources: List[Dict[str, Any]]
+
 # ────────────────────────────── App Setup ──────────────────────────────
 logger = get_logger("APP", name="studybuddy")
 
@@ -581,6 +586,84 @@ def get_file_summary(user_id: str, project_id: str, filename: str):
     if not doc:
         raise HTTPException(404, detail="No summary found for that file.")
     return FileSummaryResponse(filename=filename, summary=doc.get("summary", ""))
+
+
+@app.post("/report", response_model=ReportResponse)
+async def generate_report(
+    user_id: str = Form(...),
+    project_id: str = Form(...),
+    filename: str = Form(...),
+    outline_words: int = Form(200),
+    report_words: int = Form(1200),
+    instructions: str = Form("")
+):
+    """
+    Generate a Markdown report for a single document using a lightweight CoT:
+    1) Gemini Flash: create a structured outline based on file summary + top chunks
+    2) Gemini Pro: expand into a full report with citations
+    """
+    # Validate file exists
+    files_list = rag.list_files(user_id=user_id, project_id=project_id)
+    filenames_ci = {f.get("filename", "").lower(): f.get("filename") for f in files_list}
+    eff_name = filenames_ci.get(filename.lower(), filename)
+    doc_sum = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=eff_name)
+    if not doc_sum:
+        raise HTTPException(404, detail="No summary found for that file.")
+
+    # Retrieve top-k chunks for this file
+    q_vec = embedder.embed([f"Comprehensive report for {eff_name}"])[0]
+    hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=8, filenames=[eff_name])
+    if not hits:
+        # Fall back to summary-only report
+        hits = []
+
+    # Build context
+    contexts = []
+    sources_meta = []
+    for h in hits:
+        doc = h["doc"]
+        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 1600)}")
+        sources_meta.append({
+            "filename": doc.get("filename"),
+            "topic_name": doc.get("topic_name"),
+            "page_span": doc.get("page_span"),
+            "score": float(h.get("score", 0.0)),
+            "chunk_id": str(doc.get("_id", ""))
+        })
+    context_text = "\n\n---\n\n".join(contexts) if contexts else ""
+    file_summary = doc_sum.get("summary", "")
+
+    # Chain-of-thought style two-step with Gemini
+    from utils.router import GEMINI_MED, GEMINI_PRO
+    sys_outline = (
+        "You are an expert technical writer. Create a concise, hierarchical outline for a report based on the MATERIALS. "
+        "Output as Markdown bullet list only. Keep it within about {} words."
+    ).format(max(100, outline_words))
+    user_outline = f"MATERIALS:\n\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\nINSTRUCTIONS (if any):\n{instructions}"
+
+    try:
+        # Step 1: Outline with Flash/Med
+        selection_outline = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
+        outline_md = await generate_answer_with_model(selection_outline, sys_outline, user_outline, gemini_rotator, nvidia_rotator)
+    except Exception as e:
+        logger.warning(f"Report outline failed: {e}")
+        outline_md = "# Report Outline\n\n- Introduction\n- Key Topics\n- Conclusion"
+
+    sys_report = (
+        "You are an expert report writer. Using the OUTLINE and MATERIALS, write a comprehensive Markdown report. "
+        "- Use section headings\n- Keep it factual and grounded in the materials\n- Include brief citations like (source: filename, topic). "
+        f"Target length ~{max(600, report_words)} words."
+    )
+    user_report = f"OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\nINSTRUCTIONS (if any):\n{instructions}"
+
+    try:
+        selection_report = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
+        report_md = await generate_answer_with_model(selection_report, sys_report, user_report, gemini_rotator, nvidia_rotator)
+    except Exception as e:
+        logger.error(f"Report generation failed: {e}")
+        report_md = outline_md + "\n\n" + file_summary
+
+    return ReportResponse(filename=eff_name, report_markdown=report_md, sources=sources_meta)
 
 
 @app.post("/chat", response_model=ChatAnswerResponse)

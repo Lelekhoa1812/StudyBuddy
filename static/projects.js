@@ -34,6 +34,14 @@
     deleteProjectBtn.addEventListener('click', handleDeleteProject);
   }
 
+  function handleDeleteProject() {
+    if (!currentProject) return;
+    
+    if (confirm(`Are you sure you want to delete "${currentProject.name}"? This will remove all associated files and chat history.`)) {
+      deleteProject(currentProject.project_id);
+    }
+  }
+
   async function loadProjects() {
     const user = window.__sb_get_user();
     if (!user) return;
@@ -51,6 +59,11 @@
         } else {
           // Select first project by default
           selectProject(projects[0]);
+        }
+        
+        // Update upload button after projects are loaded
+        if (window.__sb_update_upload_button) {
+          window.__sb_update_upload_button();
         }
       }
     } catch (error) {
@@ -129,6 +142,15 @@
     // Update page title to show project name
     if (window.__sb_update_page_title) {
       window.__sb_update_page_title(`Project: ${project.name}`);
+    }
+    
+    // Dispatch custom event to notify other scripts that project has changed
+    const event = new CustomEvent('projectChanged', { detail: { project } });
+    document.dispatchEvent(event);
+    
+    // Update upload button if the function exists
+    if (window.__sb_update_upload_button) {
+      window.__sb_update_upload_button();
     }
   }
 

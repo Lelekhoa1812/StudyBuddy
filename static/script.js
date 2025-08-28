@@ -29,6 +29,14 @@
     setupFileDropZone();
     setupEventListeners();
     checkUserAuth();
+    
+    // Listen for project changes
+    document.addEventListener('projectChanged', () => {
+      updateUploadButton();
+    });
+    
+    // Initial button state update
+    updateUploadButton();
   }
 
   function setupFileDropZone() {
@@ -422,7 +430,12 @@
         enableChat();
       }
     }
+    // Always update upload button state
+    updateUploadButton();
   }
+
+  // Public API
+  window.__sb_update_upload_button = updateUploadButton;
 
   // Listen for project changes
   window.addEventListener('projectChanged', () => {

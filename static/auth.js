@@ -24,6 +24,12 @@
       // Trigger project loading after successful auth
       if (window.__sb_load_projects) {
         window.__sb_load_projects();
+        // Update upload button after a short delay to ensure projects are loaded
+        setTimeout(() => {
+          if (window.__sb_update_upload_button) {
+            window.__sb_update_upload_button();
+          }
+        }, 100);
       }
     } else {
       userInfo.style.display = 'none';

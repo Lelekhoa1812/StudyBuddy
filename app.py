@@ -222,7 +222,7 @@ def _extract_pages(filename: str, file_bytes: bytes) -> List[Dict[str, Any]]:
 def index():
     index_path = os.path.join("static", "index.html")
     if not os.path.exists(index_path):
-        return HTMLResponse("<h1>StudyBuddy RAG</h1><p>Static files not found.</p>")
+        return HTMLResponse("<h1>StudyBuddy</h1><p>Static files not found.</p>")
     return FileResponse(index_path)
 
 

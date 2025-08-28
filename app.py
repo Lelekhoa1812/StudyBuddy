@@ -597,7 +597,8 @@ async def chat(
 
     # 0) Detect any filenames mentioned in the question (e.g., JADE.pdf)
     #    Supports .pdf, .docx, and .doc for detection purposes
-    mentioned = set([m.group(0).strip() for m in re.finditer(r"[\w\-\. ]+\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
+    # Only capture contiguous tokens ending with extension (no spaces) to avoid swallowing prompt text
+    mentioned = set([m.group(0).strip() for m in re.finditer(r"\b[^\s/\\]+?\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
     if mentioned:
         logger.info(f"[CHAT] Detected mentioned filenames in question: {list(mentioned)}")
 
@@ -729,6 +730,20 @@ async def chat(
                     relevant_files=mentioned_normalized
                 )
         if not hits:
+            # Last resort: use summaries from relevant files if we didn't have explicit mentions normalized
+            candidates = mentioned_normalized or relevant_files or []
+            if candidates:
+                fsum_map = {f["filename"]: f.get("summary", "") for f in files_list}
+                summaries = [fsum_map.get(fn, "") for fn in candidates]
+                summaries = [s for s in summaries if s]
+                if summaries:
+                    answer = ("\n\n---\n\n").join(summaries)
+                    logger.info(f"[CHAT] Falling back to file-level summaries for: {candidates}")
+                    return ChatAnswerResponse(
+                        answer=answer,
+                        sources=[{"filename": fn, "file_summary": True} for fn in candidates],
+                        relevant_files=candidates
+                    )
             return ChatAnswerResponse(
                 answer="I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",
                 sources=[],

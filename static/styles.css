@@ -763,6 +763,105 @@
   font-style: italic;
 }
 
+/* Markdown content styling */
+.msg.assistant h1,
+.msg.assistant h2,
+.msg.assistant h3,
+.msg.assistant h4,
+.msg.assistant h5,
+.msg.assistant h6 {
+  margin: 16px 0 8px 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.msg.assistant h1 { font-size: 1.5em; }
+.msg.assistant h2 { font-size: 1.3em; }
+.msg.assistant h3 { font-size: 1.1em; }
+
+.msg.assistant p {
+  margin: 8px 0;
+  line-height: 1.6;
+}
+
+.msg.assistant ul,
+.msg.assistant ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.msg.assistant li {
+  margin: 4px 0;
+}
+
+.msg.assistant code {
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+.msg.assistant pre {
+  background: var(--bg);
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.msg.assistant pre code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+
+.msg.assistant blockquote {
+  border-left: 4px solid var(--accent);
+  margin: 12px 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.msg.assistant strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.msg.assistant em {
+  font-style: italic;
+}
+
+.msg.assistant a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.msg.assistant a:hover {
+  color: var(--accent-hover);
+}
+
+.msg.assistant table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.msg.assistant th,
+.msg.assistant td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.msg.assistant th {
+  background: var(--bg);
+  font-weight: 600;
+}
+
 @keyframes messageSlideIn {
   from {
     opacity: 0;

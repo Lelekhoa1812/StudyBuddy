@@ -643,7 +643,20 @@
   function appendMessage(role, text) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `msg ${role}`;
-    messageDiv.textContent = text;
+    
+    // Render Markdown for assistant messages
+    if (role === 'assistant') {
+      try {
+        // Use marked library to convert Markdown to HTML
+        const htmlContent = marked.parse(text);
+        messageDiv.innerHTML = htmlContent;
+      } catch (e) {
+        // Fallback to plain text if Markdown parsing fails
+        messageDiv.textContent = text;
+      }
+    } else {
+      messageDiv.textContent = text;
+    }
     
     messages.appendChild(messageDiv);
     

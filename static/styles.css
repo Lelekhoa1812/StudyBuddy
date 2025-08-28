@@ -51,8 +51,8 @@
   margin: 0;
   padding: 0;
 }
-
-body {
+  
+  body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -113,7 +113,7 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0;
+    margin: 0;
 }
 
 .logo-text p {
@@ -349,7 +349,7 @@ body {
 .top-bar-title h2 {
   font-size: 20px;
   font-weight: 600;
-  color: var(--text);
+    color: var(--text);
   margin: 0;
 }
 
@@ -368,10 +368,10 @@ body {
 
 .content-container {
   max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
+    margin: 0 auto;
+    padding: 24px;
+  }
+  
 /* Project Header */
 .project-header {
   display: flex;
@@ -491,8 +491,8 @@ body {
 }
 
 /* Cards */
-.card {
-  background: var(--card);
+  .card {
+    background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 32px;

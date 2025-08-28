@@ -75,7 +75,7 @@
     askBtn.addEventListener('click', handleAsk);
     questionInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
+    e.preventDefault();
         handleAsk();
       }
     });
@@ -281,7 +281,7 @@
       if (response.ok) {
         updateProgressStatus('Upload successful! Processing documents...');
         updateProgressFill(0);
-        logProgress(`Job ID: ${data.job_id}`);
+        // Friendly, non-technical messages only
         logProgress('Files uploaded successfully');
         
         // Poll backend for real progress
@@ -331,28 +331,24 @@
 
   function startUploadStatusPolling(jobId, totalFiles) {
     let stopped = false;
+    let failCount = 0;
+    const maxFailsBeforeSilentStop = 30; // ~36s at 1200ms
     const interval = setInterval(async () => {
       if (stopped) return;
       try {
         const res = await fetch(`/upload/status?job_id=${encodeURIComponent(jobId)}`);
-        if (!res.ok) {
-          throw new Error('Status not available');
-        }
+        if (!res.ok) { failCount++; return; }
         const status = await res.json();
         const percent = Math.max(0, Math.min(100, parseInt(status.percent || 0, 10)));
         const completed = status.completed || 0;
         const total = status.total || totalFiles || 1;
         updateProgressFill(percent);
-        updateProgressStatus(`Processing documents... ${percent}% (${completed}/${total})`);
-        if (status.last_error) {
-          logProgress(`Warning: ${status.last_error}`);
-        }
+        updateProgressStatus(percent >= 100 ? 'Finalizing...' : `Processing documents (${completed}/${total}) · ${percent}%`);
         if (status.status === 'completed' || percent >= 100) {
           clearInterval(interval);
           stopped = true;
           updateProgressFill(100);
           updateProgressStatus('Processing complete!');
-          logProgress('All documents processed successfully');
           logProgress('You can now start chatting with your documents');
           setTimeout(() => hideUploadProgress(), 1500);
           enableChat();
@@ -360,9 +356,13 @@
           setTimeout(loadStoredFiles, 1000);
         }
       } catch (e) {
-        clearInterval(interval);
-        stopped = true;
-        logProgress(`Error reading job status: ${e.message}`);
+        // Swallow transient errors; update a friendly spinner-like status
+        failCount++;
+        if (failCount >= maxFailsBeforeSilentStop) {
+          clearInterval(interval);
+          stopped = true;
+          updateProgressStatus('Still working...');
+        }
       }
     }, 1200);
   }
@@ -427,7 +427,7 @@
         
         // Add sources if available
         if (data.sources && data.sources.length > 0) {
-          appendSources(data.sources);
+        appendSources(data.sources);
         }
       } else {
         throw new Error(data.detail || 'Failed to get answer');
@@ -460,7 +460,7 @@
       console.error('Failed to save chat message:', error);
     }
   }
-
+  
   function appendMessage(role, text) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `msg ${role}`;
@@ -475,7 +475,7 @@
     
     return messageDiv;
   }
-
+  
   function appendSources(sources) {
     const sourcesDiv = document.createElement('div');
     sourcesDiv.className = 'sources';

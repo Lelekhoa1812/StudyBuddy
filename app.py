@@ -423,7 +423,7 @@ async def upload_files(
 
                 # File-level summary (cheap extractive)
                 full_text = "\n\n".join(p.get("text", "") for p in pages)
-                file_summary = cheap_summarize(full_text, max_sentences=6)
+                file_summary = await cheap_summarize(full_text, max_sentences=6)
                 rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
                 logger.info(f"[{job_id}] Completed {fname}")
             except Exception as e:

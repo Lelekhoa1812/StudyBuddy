@@ -201,12 +201,12 @@
 
       if (response.ok) {
         updateProgressStatus('Upload successful! Processing documents...');
-        updateProgressFill(50);
+        updateProgressFill(0);
         logProgress(`Job ID: ${data.job_id}`);
         logProgress('Files uploaded successfully');
         
-        // Simulate processing progress
-        simulateProcessing();
+        // Deterministic per-file progression
+        simulateProcessing(selectedFiles.length);
       } else {
         throw new Error(data.detail || 'Upload failed');
       }
@@ -222,7 +222,7 @@
 
   function showUploadProgress() {
     uploadProgress.style.display = 'block';
-    updateProgressStatus('Uploading files...');
+    updateProgressStatus('Uploading files... (DO NOT REFRESH)');
     updateProgressFill(0);
     progressLog.innerHTML = '';
   }
@@ -248,23 +248,35 @@
     progressLog.scrollTop = progressLog.scrollHeight;
   }
 
-  function simulateProcessing() {
-    let progress = 50;
-    const interval = setInterval(() => {
-      progress += Math.random() * 10;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
+  function simulateProcessing(totalFiles) {
+    // Split 100% evenly across files. Round to nearest integer.
+    let completed = 0;
+    const step = Math.round(100 / Math.max(totalFiles, 1));
+    const targets = Array.from({ length: totalFiles }, (_, i) => Math.min(100, Math.round(((i + 1) / totalFiles) * 100)));
+
+    function advance() {
+      if (completed >= totalFiles) {
+        updateProgressFill(100);
         updateProgressStatus('Processing complete!');
         logProgress('All documents processed successfully');
         logProgress('You can now start chatting with your documents');
-        setTimeout(() => hideUploadProgress(), 2000);
+        setTimeout(() => hideUploadProgress(), 1500);
         enableChat();
-      } else {
-        updateProgressFill(progress);
-        updateProgressStatus(`Processing documents... ${Math.round(progress)}%`);
+        return;
       }
-    }, 500);
+
+      const currentTarget = targets[completed];
+      updateProgressFill(currentTarget);
+      updateProgressStatus(`Processing documents... ${currentTarget}%`);
+      logProgress(`Finished processing file ${completed + 1}/${totalFiles}`);
+      completed += 1;
+
+      // Wait a short time before next step (simulated, since backend is background)
+      setTimeout(advance, 1200);
+    }
+
+    // kick off first step after a short delay to show feedback
+    setTimeout(advance, 800);
   }
 
   function enableChat() {

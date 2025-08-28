@@ -1,12 +1,16 @@
 # https://binkhoale1812-edsummariser.hf.space/
 import os, io, re, uuid, json, time, logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+
+# MongoDB imports
+from pymongo.errors import PyMongoError, ConnectionFailure, ServerSelectionTimeoutError
 
 from utils.rotator import APIKeyRotator
 from utils.parser import parse_pdf_bytes, parse_docx_bytes
@@ -18,6 +22,48 @@ from utils.router import select_model, generate_answer_with_model
 from utils.summarizer import cheap_summarize
 from utils.common import trim_text
 from utils.logger import get_logger
+
+# ────────────────────────────── Response Models ──────────────────────────────
+class ProjectResponse(BaseModel):
+    project_id: str
+    user_id: str
+    name: str
+    description: str
+    created_at: str
+    updated_at: str
+
+class ProjectsListResponse(BaseModel):
+    projects: List[ProjectResponse]
+
+class ChatMessageResponse(BaseModel):
+    user_id: str
+    project_id: str
+    role: str
+    content: str
+    timestamp: float
+    created_at: str
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessageResponse]
+
+class MessageResponse(BaseModel):
+    message: str
+
+class UploadResponse(BaseModel):
+    job_id: str
+    status: str
+
+class FileSummaryResponse(BaseModel):
+    filename: str
+    summary: str
+
+class ChatAnswerResponse(BaseModel):
+    answer: str
+    sources: List[Dict[str, Any]]
+    relevant_files: Optional[List[str]] = None
+
+class HealthResponse(BaseModel):
+    ok: bool
 
 # ────────────────────────────── App Setup ──────────────────────────────
 logger = get_logger("APP", name="studybuddy")
@@ -45,8 +91,19 @@ captioner = BlipCaptioner()
 embedder = EmbeddingClient(model_name=os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
 
 # Mongo / RAG store
-rag = RAGStore(mongo_uri=os.getenv("MONGO_URI"), db_name=os.getenv("MONGO_DB", "studybuddy"))
-ensure_indexes(rag)
+try:
+    rag = RAGStore(mongo_uri=os.getenv("MONGO_URI"), db_name=os.getenv("MONGO_DB", "studybuddy"))
+    # Test the connection
+    rag.client.admin.command('ping')
+    logger.info("[APP] MongoDB connection successful")
+    ensure_indexes(rag)
+    logger.info("[APP] MongoDB indexes ensured")
+except Exception as e:
+    logger.error(f"[APP] Failed to initialize MongoDB/RAG store: {str(e)}")
+    logger.error(f"[APP] MONGO_URI: {os.getenv('MONGO_URI', 'Not set')}")
+    logger.error(f"[APP] MONGO_DB: {os.getenv('MONGO_DB', 'studybuddy')}")
+    # Create a dummy RAG store for now - this will cause errors but prevents the app from crashing
+    rag = None
 
 
 # ────────────────────────────── Auth Helpers/Routes ───────────────────────────
@@ -100,50 +157,108 @@ async def login(email: str = Form(...), password: str = Form(...)):
 
 
 # ────────────────────────────── Project Management ───────────────────────────
-@app.post("/projects/create")
+@app.post("/projects/create", response_model=ProjectResponse)
 async def create_project(user_id: str = Form(...), name: str = Form(...), description: str = Form("")):
     """Create a new project for a user"""
-    if not name.strip():
-        raise HTTPException(400, detail="Project name is required")
-    
-    project_id = str(uuid.uuid4())
-    project = {
-        "project_id": project_id,
-        "user_id": user_id,
-        "name": name.strip(),
-        "description": description.strip(),
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
-    
-    rag.db["projects"].insert_one(project)
-    logger.info(f"[PROJECT] Created project {name} for user {user_id}")
-    return project
+    try:
+        if not rag:
+            raise HTTPException(500, detail="Database connection not available")
+            
+        if not name.strip():
+            raise HTTPException(400, detail="Project name is required")
+        
+        if not user_id.strip():
+            raise HTTPException(400, detail="User ID is required")
+        
+        project_id = str(uuid.uuid4())
+        current_time = datetime.now(timezone.utc)
+        
+        project = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "name": name.strip(),
+            "description": description.strip(),
+            "created_at": current_time,
+            "updated_at": current_time
+        }
+        
+        logger.info(f"[PROJECT] Creating project {name} for user {user_id}")
+        
+        # Insert the project
+        try:
+            result = rag.db["projects"].insert_one(project)
+            logger.info(f"[PROJECT] Created project {name} with ID {project_id}, MongoDB result: {result.inserted_id}")
+        except PyMongoError as mongo_error:
+            logger.error(f"[PROJECT] MongoDB error creating project: {str(mongo_error)}")
+            raise HTTPException(500, detail=f"Database error: {str(mongo_error)}")
+        except Exception as db_error:
+            logger.error(f"[PROJECT] Database error creating project: {str(db_error)}")
+            raise HTTPException(500, detail=f"Database error: {str(db_error)}")
+        
+        # Return a properly formatted response
+        response = ProjectResponse(
+            project_id=project_id,
+            user_id=user_id,
+            name=name.strip(),
+            description=description.strip(),
+            created_at=current_time.isoformat(),
+            updated_at=current_time.isoformat()
+        )
+        
+        logger.info(f"[PROJECT] Successfully created project {name} for user {user_id}")
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"[PROJECT] Error creating project: {str(e)}")
+        logger.error(f"[PROJECT] Error type: {type(e)}")
+        logger.error(f"[PROJECT] Error details: {e}")
+        raise HTTPException(500, detail=f"Failed to create project: {str(e)}")
 
 
-@app.get("/projects")
+@app.get("/projects", response_model=ProjectsListResponse)
 async def list_projects(user_id: str):
     """List all projects for a user"""
-    projects = list(rag.db["projects"].find(
-        {"user_id": user_id},
-        {"_id": 0}
-    ).sort("updated_at", -1))
-    return {"projects": projects}
+    projects_cursor = rag.db["projects"].find(
+        {"user_id": user_id}
+    ).sort("updated_at", -1)
+    
+    projects = []
+    for project in projects_cursor:
+        projects.append(ProjectResponse(
+            project_id=project["project_id"],
+            user_id=project["user_id"],
+            name=project["name"],
+            description=project.get("description", ""),
+            created_at=project["created_at"].isoformat() if isinstance(project["created_at"], datetime) else str(project["created_at"]),
+            updated_at=project["updated_at"].isoformat() if isinstance(project["updated_at"], datetime) else str(project["updated_at"])
+        ))
+    
+    return ProjectsListResponse(projects=projects)
 
 
-@app.get("/projects/{project_id}")
+@app.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: str, user_id: str):
     """Get a specific project (with user ownership check)"""
     project = rag.db["projects"].find_one(
-        {"project_id": project_id, "user_id": user_id},
-        {"_id": 0}
+        {"project_id": project_id, "user_id": user_id}
     )
     if not project:
         raise HTTPException(404, detail="Project not found")
-    return project
+    
+    return ProjectResponse(
+        project_id=project["project_id"],
+        user_id=project["user_id"],
+        name=project["name"],
+        description=project.get("description", ""),
+        created_at=project["created_at"].isoformat() if isinstance(project["created_at"], datetime) else str(project["created_at"]),
+        updated_at=project["updated_at"].isoformat() if isinstance(project["updated_at"], datetime) else str(project["updated_at"])
+    )
 
 
-@app.delete("/projects/{project_id}")
+@app.delete("/projects/{project_id}", response_model=MessageResponse)
 async def delete_project(project_id: str, user_id: str):
     """Delete a project and all its associated data"""
     # Check ownership
@@ -158,11 +273,11 @@ async def delete_project(project_id: str, user_id: str):
     rag.db["chat_sessions"].delete_many({"project_id": project_id})
     
     logger.info(f"[PROJECT] Deleted project {project_id} for user {user_id}")
-    return {"message": "Project deleted successfully"}
+    return MessageResponse(message="Project deleted successfully")
 
 
 # ────────────────────────────── Chat Sessions ──────────────────────────────
-@app.post("/chat/save")
+@app.post("/chat/save", response_model=MessageResponse)
 async def save_chat_message(
     user_id: str = Form(...),
     project_id: str = Form(...),
@@ -180,21 +295,32 @@ async def save_chat_message(
         "role": role,
         "content": content,
         "timestamp": timestamp or time.time(),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     rag.db["chat_sessions"].insert_one(message)
-    return {"message": "Chat message saved"}
+    return MessageResponse(message="Chat message saved")
 
 
-@app.get("/chat/history")
+@app.get("/chat/history", response_model=ChatHistoryResponse)
 async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
     """Get chat history for a project"""
-    messages = list(rag.db["chat_sessions"].find(
-        {"user_id": user_id, "project_id": project_id},
-        {"_id": 0}
-    ).sort("timestamp", 1).limit(limit))
-    return {"messages": messages}
+    messages_cursor = rag.db["chat_sessions"].find(
+        {"user_id": user_id, "project_id": project_id}
+    ).sort("timestamp", 1).limit(limit)
+    
+    messages = []
+    for message in messages_cursor:
+        messages.append(ChatMessageResponse(
+            user_id=message["user_id"],
+            project_id=message["project_id"],
+            role=message["role"],
+            content=message["content"],
+            timestamp=message["timestamp"],
+            created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"])
+        ))
+    
+    return ChatHistoryResponse(messages=messages)
 
 
 # ────────────────────────────── Helpers ──────────────────────────────
@@ -226,7 +352,7 @@ def index():
     return FileResponse(index_path)
 
 
-@app.post("/upload")
+@app.post("/upload", response_model=UploadResponse)
 async def upload_files(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -307,23 +433,39 @@ async def upload_files(
 
     # Kick off processing in background to keep UI responsive
     background_tasks.add_task(_process)
-    return {"job_id": job_id, "status": "processing"}
+    return UploadResponse(job_id=job_id, status="processing")
 
 
 @app.get("/cards")
 def list_cards(user_id: str, project_id: str, filename: Optional[str] = None, limit: int = 50, skip: int = 0):
-    return rag.list_cards(user_id=user_id, project_id=project_id, filename=filename, limit=limit, skip=skip)
+    """List cards for a project"""
+    cards = rag.list_cards(user_id=user_id, project_id=project_id, filename=filename, limit=limit, skip=skip)
+    
+    # Ensure all cards are JSON serializable
+    serializable_cards = []
+    for card in cards:
+        serializable_card = {}
+        for key, value in card.items():
+            if key == '_id':
+                serializable_card[key] = str(value)  # Convert ObjectId to string
+            elif isinstance(value, datetime):
+                serializable_card[key] = value.isoformat()  # Convert datetime to ISO string
+            else:
+                serializable_card[key] = value
+        serializable_cards.append(serializable_card)
+    
+    return {"cards": serializable_cards}
 
 
-@app.get("/file-summary")
+@app.get("/file-summary", response_model=FileSummaryResponse)
 def get_file_summary(user_id: str, project_id: str, filename: str):
     doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=filename)
     if not doc:
         raise HTTPException(404, detail="No summary found for that file.")
-    return {"filename": filename, "summary": doc.get("summary", "")}
+    return FileSummaryResponse(filename=filename, summary=doc.get("summary", ""))
 
 
-@app.post("/chat")
+@app.post("/chat", response_model=ChatAnswerResponse)
 async def chat(
     user_id: str = Form(...), 
     project_id: str = Form(...), 
@@ -337,6 +479,7 @@ async def chat(
     - Bring in recent chat memory: last 3 via NVIDIA relevance; remaining 17 via semantic search
     - After answering, summarize (q,a) via NVIDIA and store into LRU (last 20)
     """
+    import sys
     from memo.memory import MemoryLRU
     from memo.history import summarize_qa_with_nvidia, files_relevance, related_recent_and_semantic_context
     from utils.router import NVIDIA_SMALL  # reuse default name
@@ -349,9 +492,15 @@ async def chat(
         fn = m.group(1)
         doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=fn)
         if doc:
-            return {"answer": doc.get("summary", ""), "sources": [{"filename": fn, "file_summary": True}]}
+            return ChatAnswerResponse(
+                answer=doc.get("summary", ""), 
+                sources=[{"filename": fn, "file_summary": True}]
+            )
         else:
-            return {"answer": "I couldn't find a summary for that file in your library.", "sources": []}
+            return ChatAnswerResponse(
+                answer="I couldn't find a summary for that file in your library.", 
+                sources=[]
+            )
         
     # 1) Preload file list + summaries
     files_list = rag.list_files(user_id=user_id, project_id=project_id)  # [{filename, summary}]
@@ -391,11 +540,11 @@ async def chat(
     q_vec = embedder.embed([question])[0]
     hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=k, filenames=relevant_files if relevant_files else None)
     if not hits:
-        return {
-            "answer": "I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",
-            "sources": [],
-            "relevant_files": relevant_files
-        }
+        return ChatAnswerResponse(
+            answer="I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",
+            sources=[],
+            relevant_files=relevant_files
+        )
     # Compose context
     contexts = []
     sources_meta = []
@@ -408,7 +557,7 @@ async def chat(
             "topic_name": doc.get("topic_name"),
             "page_span": doc.get("page_span"),
             "score": float(score),
-            "chunk_id": str(doc.get("_id", ""))
+            "chunk_id": str(doc.get("_id", ""))  # Convert ObjectId to string
         })
     context_text = "\n\n---\n\n".join(contexts)
 
@@ -462,9 +611,82 @@ async def chat(
         logger.warning(f"QA summarize/store failed: {e}")
     # Trim for logging
     logger.info("LLM answer (trimmed): %s", trim_text(answer, 200).replace("\n", " "))
-    return {"answer": answer, "sources": sources_meta}
+    return ChatAnswerResponse(answer=answer, sources=sources_meta, relevant_files=relevant_files)
 
 
-@app.get("/healthz")
+@app.get("/healthz", response_model=HealthResponse)
 def health():
-    return {"ok": True}
+    return HealthResponse(ok=True)
+
+
+@app.get("/test-db")
+async def test_database():
+    """Test database connection and basic operations"""
+    try:
+        if not rag:
+            return {
+                "status": "error",
+                "message": "RAG store not initialized",
+                "error_type": "RAGStoreNotInitialized"
+            }
+            
+        # Test basic connection
+        rag.client.admin.command('ping')
+        
+        # Test basic insert/query
+        test_collection = rag.db["test_collection"]
+        test_doc = {"test": True, "timestamp": datetime.now(timezone.utc)}
+        result = test_collection.insert_one(test_doc)
+        
+        # Test query
+        found = test_collection.find_one({"_id": result.inserted_id})
+        
+        # Clean up
+        test_collection.delete_one({"_id": result.inserted_id})
+        
+        return {
+            "status": "success",
+            "message": "Database connection and operations working correctly",
+            "test_id": str(result.inserted_id),
+            "found_doc": str(found["_id"]) if found else None
+        }
+        
+    except Exception as e:
+        logger.error(f"[TEST-DB] Database test failed: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Database test failed: {str(e)}",
+            "error_type": str(type(e))
+        }
+
+
+@app.get("/rag-status")
+async def rag_status():
+    """Check the status of the RAG store"""
+    if not rag:
+        return {
+            "status": "error",
+            "message": "RAG store not initialized",
+            "rag_available": False
+        }
+    
+    try:
+        # Test connection
+        rag.client.admin.command('ping')
+        return {
+            "status": "success",
+            "message": "RAG store is available and connected",
+            "rag_available": True,
+            "database": rag.db.name,
+            "collections": {
+                "chunks": rag.chunks.name,
+                "files": rag.files.name
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"RAG store connection failed: {str(e)}",
+            "rag_available": False,
+            "error": str(e)
+        }

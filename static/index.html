@@ -10,34 +10,82 @@
 <body>
   <div class="container">
     <header>
-      <h1>📚 StudyBuddy</h1>
-      <p>Upload your PDFs/DOCX, then chat with your materials. No hallucinations — answers only come from your files.</p>
+      <div class="logo">
+        <div class="logo-icon">📚</div>
+        <div class="logo-text">
+          <h1>StudyBuddy</h1>
+          <p>AI-powered document analysis & chat</p>
+        </div>
+      </div>
       <div class="auth-controls">
-        <span id="auth-status">Not signed in</span>
-        <button id="open-auth">Sign in / Create account</button>
-        <button id="logout" class="secondary" style="display:none;">Logout</button>
-        <button id="theme-toggle" class="secondary" title="Toggle theme">🌙</button>
+        <div class="user-info" id="user-info" style="display:none;">
+          <span class="user-avatar">👤</span>
+          <span class="user-email" id="user-email"></span>
+          <button id="logout" class="btn-secondary">Logout</button>
+        </div>
+        <button id="theme-toggle" class="btn-icon" title="Toggle theme">🌙</button>
       </div>
     </header>
 
-    <section class="card reveal">
-      <h2>1/ Upload materials</h2>
+    <section class="card reveal" id="upload-section">
+      <div class="card-header">
+        <h2>📁 Upload Documents</h2>
+        <p>Upload your PDFs and DOCX files to start chatting with your materials</p>
+      </div>
       <form id="upload-form">
-        <div class="hint">You must be signed in. Your user ID is managed automatically.</div>
-        <label>Files (PDF/DOCX, multiple)</label>
-        <input type="file" id="files" multiple accept=".pdf,.docx">
-        <button type="submit">Upload</button>
+        <div class="file-drop-zone" id="file-drop-zone">
+          <div class="drop-zone-content">
+            <div class="drop-zone-icon">📄</div>
+            <p>Drag & drop files here or click to browse</p>
+            <span class="file-types">Supports: PDF, DOCX</span>
+          </div>
+          <input type="file" id="files" multiple accept=".pdf,.docx" hidden>
+        </div>
+        <div class="file-list" id="file-list" style="display:none;">
+          <h4>Selected Files:</h4>
+          <div class="file-items" id="file-items"></div>
+        </div>
+        <button type="submit" class="btn-primary" id="upload-btn">
+          <span class="btn-text">Upload Documents</span>
+          <span class="btn-loading" style="display:none;">
+            <div class="spinner"></div>
+            Processing...
+          </span>
+        </button>
       </form>
-      <pre id="upload-log"></pre>
+      <div class="upload-progress" id="upload-progress" style="display:none;">
+        <div class="progress-header">
+          <h4>Processing Documents</h4>
+          <span class="progress-status" id="progress-status">Initializing...</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-log" id="progress-log"></div>
+      </div>
     </section>
 
-    <section class="card reveal">
-      <h2>2/ Ask questions</h2>
+    <section class="card reveal" id="chat-section">
+      <div class="card-header">
+        <h2>💬 Chat with Documents</h2>
+        <p>Ask questions about your uploaded materials and get AI-powered answers</p>
+      </div>
       <div id="chat">
         <div id="messages"></div>
-        <div class="chat-controls">
-          <input type="text" id="question" placeholder="Ask something about your files…">
-          <button id="ask">Ask</button>
+        <div class="chat-controls" id="chat-controls">
+          <div class="chat-input-wrapper">
+            <input type="text" id="question" placeholder="Ask something about your documents..." disabled>
+            <button id="ask" class="btn-primary" disabled>
+              <span class="btn-text">Ask</span>
+              <span class="btn-loading" style="display:none;">
+                <div class="spinner"></div>
+                Thinking...
+              </span>
+            </button>
+          </div>
+          <div class="chat-hint" id="chat-hint">
+            Upload documents first to start chatting
+          </div>
         </div>
       </div>
     </section>
@@ -50,31 +98,53 @@
   <!-- Auth Modal -->
   <div id="auth-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="auth-title">
     <div class="modal-content">
-      <button class="modal-close" id="close-auth" aria-label="Close">×</button>
-      <h2 id="auth-title">Welcome to StudyBuddy</h2>
-      <p class="modal-subtitle">Create an account or sign in to continue</p>
+      <div class="modal-header">
+        <div class="modal-logo">📚</div>
+        <h2 id="auth-title">Welcome to StudyBuddy</h2>
+        <p class="modal-subtitle">Your AI-powered document analysis companion</p>
+      </div>
       <div class="tabs">
-        <button class="tab active" data-tab="login">Login</button>
-        <button class="tab" data-tab="signup">Create account</button>
+        <button class="tab active" data-tab="login">Sign In</button>
+        <button class="tab" data-tab="signup">Create Account</button>
       </div>
       <div class="tab-body" id="tab-login">
         <form id="login-form">
-          <label>Email</label>
-          <input type="email" id="login-email" placeholder="you@example.com" required>
-          <label>Password</label>
-          <input type="password" id="login-password" placeholder="••••••••" required>
-          <button type="submit">Sign in</button>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="login-email" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn-primary">Sign in</button>
         </form>
       </div>
       <div class="tab-body hidden" id="tab-signup">
         <form id="signup-form">
-          <label>Email</label>
-          <input type="email" id="signup-email" placeholder="you@example.com" required>
-          <label>Password</label>
-          <input type="password" id="signup-password" placeholder="At least 8 characters" minlength="8" required>
-          <button type="submit">Create account</button>
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="signup-email" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="signup-password" placeholder="At least 8 characters" minlength="8" required>
+          </div>
+          <button type="submit" class="btn-primary">Create account</button>
         </form>
       </div>
+      <div class="modal-footer">
+        <p>By continuing, you agree to our Terms of Service and Privacy Policy</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <h3>Processing...</h3>
+      <p id="loading-message">Please wait while we process your request</p>
     </div>
   </div>
 

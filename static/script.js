@@ -1,85 +1,394 @@
 // ────────────────────────────── static/script.js ──────────────────────────────
-const log = (msg) => {
-    const el = document.getElementById("upload-log");
-    el.textContent += msg + "\n";
-    el.scrollTop = el.scrollHeight;
-  };
-  
-  // Upload
-  document.getElementById("upload-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const user = window.__sb_get_user && window.__sb_get_user();
-    const user_id = user && user.user_id;
-    const files = document.getElementById("files").files;
-    if (!user_id || files.length === 0) {
-      alert("Please sign in and select at least one file.");
-      return;
-    }
-    const fd = new FormData();
-    fd.append("user_id", user_id);
-    for (let f of files) fd.append("files", f);
-  
-    log("Uploading " + files.length + " file(s)…");
-    const res = await fetch("/upload", { method: "POST", body: fd });
-    const data = await res.json();
-    log("Upload accepted. Job: " + (data.job_id || "?") + " • status: " + (data.status || "?"));
-    log("Processing in the background. You can start chatting meanwhile.");
-  });
-  
-  // Chat
-  document.getElementById("ask").addEventListener("click", async () => {
-    const user = window.__sb_get_user && window.__sb_get_user();
-    const user_id = user && user.user_id;
-    const q = document.getElementById("question").value.trim();
-    if (!user_id || !q) return;
-    appendMessage("user", q);
-    document.getElementById("question").value = "";
-  
-    const fd = new FormData();
-    fd.append("user_id", user_id);
-    fd.append("question", q);
-    fd.append("k", "6");
-  
-    try {
-      const res = await fetch("/chat", { method: "POST", body: fd });
-      const data = await res.json();
-      appendMessage("assistant", data.answer || "[no answer]");
-      if (data.sources && data.sources.length) {
-        appendSources(data.sources);
-      }
-    } catch (e) {
-      appendMessage("assistant", "⚠️ Error contacting server.");
-    }
-  });
-  
-  function appendMessage(role, text) {
-    const m = document.createElement("div");
-    m.className = "msg " + role;
-    m.textContent = text;
-    document.getElementById("messages").appendChild(m);
-    requestAnimationFrame(() => m.scrollIntoView({ behavior: "smooth", block: "end" }));
-  }
-  
-  function appendSources(sources) {
-    const wrap = document.createElement("div");
-    wrap.className = "sources";
-    wrap.innerHTML = "<strong>Sources:</strong> " + sources.map(s => {
-      const f = s.filename || "unknown";
-      const t = s.topic_name ? (" • " + s.topic_name) : "";
-      const p = s.page_span ? (" [pp. " + s.page_span.join("-") + "]") : "";
-      return `<span class="pill">${f}${t}${p}</span>`;
-    }).join(" ");
-    document.getElementById("messages").appendChild(wrap);
-    requestAnimationFrame(() => wrap.scrollIntoView({ behavior: "smooth", block: "end" }));
+(function() {
+  // DOM elements
+  const fileDropZone = document.getElementById('file-drop-zone');
+  const fileInput = document.getElementById('files');
+  const fileList = document.getElementById('file-list');
+  const fileItems = document.getElementById('file-items');
+  const uploadBtn = document.getElementById('upload-btn');
+  const uploadProgress = document.getElementById('upload-progress');
+  const progressStatus = document.getElementById('progress-status');
+  const progressFill = document.getElementById('progress-fill');
+  const progressLog = document.getElementById('progress-log');
+  const questionInput = document.getElementById('question');
+  const askBtn = document.getElementById('ask');
+  const chatHint = document.getElementById('chat-hint');
+  const messages = document.getElementById('messages');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingMessage = document.getElementById('loading-message');
+
+  // State
+  let selectedFiles = [];
+  let isUploading = false;
+  let isProcessing = false;
+
+  // Initialize
+  init();
+
+  function init() {
+    setupFileDropZone();
+    setupEventListeners();
+    checkUserAuth();
   }
 
-  // Reveal on scroll
-  const observer = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (e.isIntersecting) {
-        e.target.classList.add('in');
-        observer.unobserve(e.target);
+  function setupFileDropZone() {
+    // Click to browse
+    fileDropZone.addEventListener('click', () => fileInput.click());
+    
+    // Drag and drop
+    fileDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      fileDropZone.classList.add('dragover');
+    });
+    
+    fileDropZone.addEventListener('dragleave', () => {
+      fileDropZone.classList.remove('dragover');
+    });
+    
+    fileDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      fileDropZone.classList.remove('dragover');
+      const files = Array.from(e.dataTransfer.files);
+      handleFileSelection(files);
+    });
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      handleFileSelection(files);
+    });
+  }
+
+  function setupEventListeners() {
+    // Upload form
+    document.getElementById('upload-form').addEventListener('submit', handleUpload);
+    
+    // Chat
+    askBtn.addEventListener('click', handleAsk);
+    questionInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleAsk();
       }
+    });
+  }
+
+  function handleFileSelection(files) {
+    const validFiles = files.filter(file => {
+      const isValid = file.type === 'application/pdf' || 
+                     file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (!isValid) {
+        alert(`Unsupported file type: ${file.name}. Please upload PDF or DOCX files only.`);
+      }
+      return isValid;
+    });
+
+    if (validFiles.length === 0) return;
+
+    selectedFiles = validFiles;
+    updateFileList();
+    updateUploadButton();
+  }
+
+  function updateFileList() {
+    if (selectedFiles.length === 0) {
+      fileList.style.display = 'none';
+      return;
     }
+
+    fileList.style.display = 'block';
+    fileItems.innerHTML = '';
+
+    selectedFiles.forEach((file, index) => {
+      const fileItem = document.createElement('div');
+      fileItem.className = 'file-item';
+      
+      const icon = document.createElement('span');
+      icon.className = 'file-item-icon';
+      icon.textContent = file.type.includes('pdf') ? '📄' : '📝';
+      
+      const name = document.createElement('span');
+      name.className = 'file-item-name';
+      name.textContent = file.name;
+      
+      const size = document.createElement('span');
+      size.className = 'file-item-size';
+      size.textContent = formatFileSize(file.size);
+      
+      const remove = document.createElement('button');
+      remove.className = 'file-item-remove';
+      remove.textContent = '×';
+      remove.title = 'Remove file';
+      remove.addEventListener('click', () => removeFile(index));
+      
+      fileItem.appendChild(icon);
+      fileItem.appendChild(name);
+      fileItem.appendChild(size);
+      fileItem.appendChild(remove);
+      fileItems.appendChild(fileItem);
+    });
+  }
+
+  function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    updateFileList();
+    updateUploadButton();
+  }
+
+  function updateUploadButton() {
+    const hasFiles = selectedFiles.length > 0;
+    uploadBtn.disabled = !hasFiles || isUploading;
+    
+    if (hasFiles) {
+      uploadBtn.querySelector('.btn-text').textContent = `Upload ${selectedFiles.length} Document${selectedFiles.length > 1 ? 's' : ''}`;
+    } else {
+      uploadBtn.querySelector('.btn-text').textContent = 'Upload Documents';
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  async function handleUpload(e) {
+    e.preventDefault();
+    
+    if (selectedFiles.length === 0) {
+      alert('Please select files to upload');
+      return;
+    }
+
+    const user = window.__sb_get_user();
+    if (!user) {
+      alert('Please sign in to upload files');
+      window.__sb_show_auth_modal();
+      return;
+    }
+
+    isUploading = true;
+    updateUploadButton();
+    showUploadProgress();
+
+    try {
+      const formData = new FormData();
+      formData.append('user_id', user.user_id);
+      selectedFiles.forEach(file => formData.append('files', file));
+
+      const response = await fetch('/upload', { method: 'POST', body: formData });
+      const data = await response.json();
+
+      if (response.ok) {
+        updateProgressStatus('Upload successful! Processing documents...');
+        updateProgressFill(50);
+        logProgress(`Job ID: ${data.job_id}`);
+        logProgress('Files uploaded successfully');
+        
+        // Simulate processing progress
+        simulateProcessing();
+      } else {
+        throw new Error(data.detail || 'Upload failed');
+      }
+    } catch (error) {
+      logProgress(`Error: ${error.message}`);
+      updateProgressStatus('Upload failed');
+      setTimeout(() => hideUploadProgress(), 3000);
+    } finally {
+      isUploading = false;
+      updateUploadButton();
+    }
+  }
+
+  function showUploadProgress() {
+    uploadProgress.style.display = 'block';
+    updateProgressStatus('Uploading files...');
+    updateProgressFill(0);
+    progressLog.innerHTML = '';
+  }
+
+  function hideUploadProgress() {
+    uploadProgress.style.display = 'none';
+    selectedFiles = [];
+    updateFileList();
+    updateUploadButton();
+  }
+
+  function updateProgressStatus(status) {
+    progressStatus.textContent = status;
+  }
+
+  function updateProgressFill(percentage) {
+    progressFill.style.width = `${percentage}%`;
+  }
+
+  function logProgress(message) {
+    const timestamp = new Date().toLocaleTimeString();
+    progressLog.innerHTML += `[${timestamp}] ${message}\n`;
+    progressLog.scrollTop = progressLog.scrollHeight;
+  }
+
+  function simulateProcessing() {
+    let progress = 50;
+    const interval = setInterval(() => {
+      progress += Math.random() * 10;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(interval);
+        updateProgressStatus('Processing complete!');
+        logProgress('All documents processed successfully');
+        logProgress('You can now start chatting with your documents');
+        setTimeout(() => hideUploadProgress(), 2000);
+        enableChat();
+      } else {
+        updateProgressFill(progress);
+        updateProgressStatus(`Processing documents... ${Math.round(progress)}%`);
+      }
+    }, 500);
+  }
+
+  function enableChat() {
+    questionInput.disabled = false;
+    askBtn.disabled = false;
+    chatHint.style.display = 'none';
+  }
+
+  async function handleAsk() {
+    const question = questionInput.value.trim();
+    if (!question) return;
+
+    const user = window.__sb_get_user();
+    if (!user) {
+      alert('Please sign in to chat');
+      window.__sb_show_auth_modal();
+      return;
+    }
+
+    // Add user message
+    appendMessage('user', question);
+    questionInput.value = '';
+
+    // Add thinking message
+    const thinkingMsg = appendMessage('thinking', 'Thinking...');
+    
+    // Disable input during processing
+    questionInput.disabled = true;
+    askBtn.disabled = true;
+    showButtonLoading(askBtn, true);
+
+    try {
+      const formData = new FormData();
+      formData.append('user_id', user.user_id);
+      formData.append('question', question);
+      formData.append('k', '6');
+
+      const response = await fetch('/chat', { method: 'POST', body: formData });
+      const data = await response.json();
+
+      if (response.ok) {
+        // Remove thinking message
+        thinkingMsg.remove();
+        
+        // Add assistant response
+        appendMessage('assistant', data.answer || 'No answer received');
+        
+        // Add sources if available
+        if (data.sources && data.sources.length > 0) {
+          appendSources(data.sources);
+        }
+      } else {
+        throw new Error(data.detail || 'Failed to get answer');
+      }
+    } catch (error) {
+      thinkingMsg.remove();
+      appendMessage('assistant', `⚠️ Error: ${error.message}`);
+    } finally {
+      // Re-enable input
+      questionInput.disabled = false;
+      askBtn.disabled = false;
+      showButtonLoading(askBtn, false);
+      questionInput.focus();
+    }
+  }
+
+  function appendMessage(role, text) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `msg ${role}`;
+    messageDiv.textContent = text;
+    
+    messages.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    requestAnimationFrame(() => {
+      messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+    
+    return messageDiv;
+  }
+
+  function appendSources(sources) {
+    const sourcesDiv = document.createElement('div');
+    sourcesDiv.className = 'sources';
+    
+    const sourcesList = sources.map(source => {
+      const filename = source.filename || 'unknown';
+      const topic = source.topic_name ? ` • ${source.topic_name}` : '';
+      const pages = source.page_span ? ` [pp. ${source.page_span.join('-')}]` : '';
+      const score = source.score ? ` (${source.score.toFixed(2)})` : '';
+      
+      return `<span class="pill">${filename}${topic}${pages}${score}</span>`;
+    }).join(' ');
+    
+    sourcesDiv.innerHTML = `<strong>Sources:</strong> ${sourcesList}`;
+    messages.appendChild(sourcesDiv);
+    
+    requestAnimationFrame(() => {
+      sourcesDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }
+
+  function showButtonLoading(button, isLoading) {
+    const textSpan = button.querySelector('.btn-text');
+    const loadingSpan = button.querySelector('.btn-loading');
+    
+    if (isLoading) {
+      textSpan.style.display = 'none';
+      loadingSpan.style.display = 'inline-flex';
+      button.disabled = true;
+    } else {
+      textSpan.style.display = 'inline';
+      loadingSpan.style.display = 'none';
+      button.disabled = false;
+    }
+  }
+
+  function showLoading(message = 'Processing...') {
+    loadingMessage.textContent = message;
+    loadingOverlay.classList.remove('hidden');
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+  }
+
+  function checkUserAuth() {
+    const user = window.__sb_get_user();
+    if (user) {
+      enableChat();
+    }
+  }
+
+  // Reveal animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
   }, { threshold: 0.1 });
+
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+})();

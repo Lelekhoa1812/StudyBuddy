@@ -100,6 +100,9 @@ class RAGStore:
     def vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int = 6, filenames: Optional[List[str]] = None):
         if USE_ATLAS_VECTOR:
             # Atlas Vector Search (requires pre-created index on 'embedding')
+            match_stage = {"user_id": user_id, "project_id": project_id}
+            if filenames:
+                match_stage["filename"] = {"$in": filenames}
             pipeline = [
                 {
                     "$search": {
@@ -108,21 +111,13 @@ class RAGStore:
                             "vector": query_vector,
                             "path": "embedding",
                             "k": k,
-                        },
-                        "filter": {
-                            "compound": {
-                                "must": [
-                                    {"equals": {"path": "user_id", "value": user_id}},
-                                    {"equals": {"path": "project_id", "value": project_id}}
-                                ]
-                            }
-                        },
+                        }
                     }
                 },
+                {"$match": match_stage},
                 {"$project": {"doc": "$$ROOT", "score": {"$meta": "searchScore"}}},
                 {"$limit": k},
             ]
-            # Append hit scoring algorithm
             hits = list(self.chunks.aggregate(pipeline))
             
             # Convert MongoDB documents to JSON-serializable format
@@ -140,7 +135,7 @@ class RAGStore:
                 
                 serializable_hits.append({
                     "doc": serializable_doc,
-                    "score": float(hit["score"])  # Ensure score is a regular float
+                    "score": float(hit.get("score", 0.0))
                 })
             
             return serializable_hits

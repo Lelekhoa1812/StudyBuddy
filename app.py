@@ -3,6 +3,7 @@ import os, io, re, uuid, json, time, logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
+import asyncio
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -379,60 +380,61 @@ async def upload_files(
         raw = await uf.read()
         preloaded_files.append((uf.filename, raw))
 
-    # Process files in background   
-    async def _process():
-        total_cards = 0
-        file_summaries = []
-        for fname, raw in preloaded_files:
-            logger.info(f"[{job_id}] Parsing {fname} ({len(raw)} bytes)")
+    # Single background task: process files sequentially with isolation
+    async def _process_all():
+        for idx, (fname, raw) in enumerate(preloaded_files, start=1):
+            try:
+                logger.info(f"[{job_id}] ({idx}/{len(preloaded_files)}) Parsing {fname} ({len(raw)} bytes)")
 
-            # Extract pages from file
-            pages = _extract_pages(fname, raw)
+                # Extract pages from file
+                pages = _extract_pages(fname, raw)
 
-            # Caption images per page (if any)
-            num_imgs = sum(len(p.get("images", [])) for p in pages)
-            captions = []
-            if num_imgs > 0:
-                for p in pages:
-                    caps = []
-                    for im in p.get("images", []):
-                        try:
-                            cap = captioner.caption_image(im)
-                            caps.append(cap)
-                        except Exception as e:
-                            logger.warning(f"Caption error: {e}")
-                    captions.append(caps)
-            else:
-                captions = [[] for _ in pages]
+                # Caption images per page (if any)
+                num_imgs = sum(len(p.get("images", [])) for p in pages)
+                captions = []
+                if num_imgs > 0:
+                    for p in pages:
+                        caps = []
+                        for im in p.get("images", []):
+                            try:
+                                cap = captioner.caption_image(im)
+                                caps.append(cap)
+                            except Exception as e:
+                                logger.warning(f"[{job_id}] Caption error in {fname}: {e}")
+                        captions.append(caps)
+                else:
+                    captions = [[] for _ in pages]
 
-            # Merge captions into text
-            for idx, p in enumerate(pages):
-                if captions[idx]:
-                    p["text"] = (p.get("text", "") + "\n\n" + "\n".join([f"[Image] {c}" for c in captions[idx]])).strip()
+                # Merge captions into text
+                for p, caps in zip(pages, captions):
+                    if caps:
+                        p["text"] = (p.get("text", "") + "\n\n" + "\n".join([f"[Image] {c}" for c in caps])).strip()
 
-            # Build cards
-            cards = build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
-            logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
+                # Build cards
+                cards = build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
+                logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
 
-            # Embed & store
-            embeddings = embedder.embed([c["content"] for c in cards])
-            for c, vec in zip(cards, embeddings):
-                c["embedding"] = vec
+                # Embed & store
+                embeddings = embedder.embed([c["content"] for c in cards])
+                for c, vec in zip(cards, embeddings):
+                    c["embedding"] = vec
 
-            # Store cards in MongoDB on card
-            rag.store_cards(cards)
-            total_cards += len(cards)
+                rag.store_cards(cards)
 
-            # File-level summary (cheap extractive)
-            full_text = "\n\n".join(p.get("text", "") for p in pages)
-            file_summary = cheap_summarize(full_text, max_sentences=6)
-            rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
-            file_summaries.append({"filename": fname, "summary": file_summary})
+                # File-level summary (cheap extractive)
+                full_text = "\n\n".join(p.get("text", "") for p in pages)
+                file_summary = cheap_summarize(full_text, max_sentences=6)
+                rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
+                logger.info(f"[{job_id}] Completed {fname}")
+            except Exception as e:
+                logger.error(f"[{job_id}] Failed processing {fname}: {e}")
+            finally:
+                # Yield control between files to keep loop responsive
+                await asyncio.sleep(0)
 
-        logger.info(f"[{job_id}] Ingestion complete. Total cards: {total_cards}")
+        logger.info(f"[{job_id}] Ingestion complete for {len(preloaded_files)} files")
 
-    # Kick off processing in background to keep UI responsive
-    background_tasks.add_task(_process)
+    background_tasks.add_task(_process_all)
     return UploadResponse(job_id=job_id, status="processing")
 
 

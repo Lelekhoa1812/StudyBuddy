@@ -20,12 +20,22 @@ def parse_pdf_bytes(b: bytes) -> List[Dict[str, Any]]:
             images = []
             for img in page.get_images(full=True):
                 xref = img[0]
-                pix = fitz.Pixmap(doc, xref)
-                if pix.n - pix.alpha >= 4:  # CMYK
-                    pix = fitz.Pixmap(fitz.csRGB, pix)
-                im = Image.frombytes("RGBA" if pix.alpha else "RGB", (pix.width, pix.height), pix.samples)
-                images.append(im.convert("RGB"))
-                pix = None
+                try:
+                    pix = fitz.Pixmap(doc, xref)
+                    # Convert CMYK/Alpha safely
+                    if pix.n - pix.alpha >= 4:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    # Use PNG bytes to avoid 'not enough image data'
+                    png_bytes = pix.tobytes("png")
+                    im = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                    images.append(im)
+                except Exception as e:
+                    logger.warning(f"Failed to extract image on page {i+1}: {e}")
+                finally:
+                    try:
+                        pix = None
+                    except Exception:
+                        pass
             pages.append({"page_num": i + 1, "text": text, "images": images})
     logger.info(f"Parsed PDF with {len(pages)} pages")
     return pages

@@ -597,7 +597,9 @@ async def chat(
 
     # 0) Detect any filenames mentioned in the question (e.g., JADE.pdf)
     #    Supports .pdf, .docx, and .doc for detection purposes
-    mentioned = set([m.group(0) for m in re.finditer(r"[\w\-\. ]+\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
+    mentioned = set([m.group(0).strip() for m in re.finditer(r"[\w\-\. ]+\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
+    if mentioned:
+        logger.info(f"[CHAT] Detected mentioned filenames in question: {list(mentioned)}")
 
     # 0a) If the question explicitly asks for a summary/about of a single mentioned file, return its summary directly
     if mentioned and (re.search(r"\b(summary|summarize|about|overview)\b", question, re.IGNORECASE)):
@@ -632,16 +634,28 @@ async def chat(
         key = mfn.lower()
         if key in filenames_ci_map:
             mentioned_normalized.append(filenames_ci_map[key])
+    if mentioned and not mentioned_normalized and files_list:
+        # Try looser match: contained filenames ignoring spaces
+        norm = {f.get("filename", "").lower().replace(" ", ""): f.get("filename") for f in files_list if f.get("filename")}
+        for mfn in mentioned:
+            key2 = mfn.lower().replace(" ", "")
+            if key2 in norm:
+                mentioned_normalized.append(norm[key2])
+    if mentioned_normalized:
+        logger.info(f"[CHAT] Normalized mentions to stored filenames: {mentioned_normalized}")
 
     # 1b) Ask NVIDIA to mark relevance per file
     relevant_map = await files_relevance(question, files_list, nvidia_rotator)
     relevant_files = [fn for fn, ok in relevant_map.items() if ok]
+    logger.info(f"[CHAT] NVIDIA relevant files: {relevant_files}")
 
     # 1c) Ensure any explicitly mentioned files in the question are included
     #     This safeguards against model misclassification
     if mentioned_normalized:
         extra = [fn for fn in mentioned_normalized if fn not in relevant_files]
         relevant_files.extend(extra)
+        if extra:
+            logger.info(f"[CHAT] Forced-include mentioned files into relevance: {extra}")
 
     # 2) Memory context: recent 3 via NVIDIA, remaining 17 via semantic
     # recent 3 related (we do a simple include-all; NVIDIA will prune by "related" selection using the same mechanism as files_relevance but here handled in history)
@@ -681,11 +695,45 @@ async def chat(
         filenames=relevant_files if relevant_files else None
     )
     if not hits:
-        return ChatAnswerResponse(
-            answer="I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",
-            sources=[],
-            relevant_files=relevant_files
-        )
+        logger.info(f"[CHAT] No hits with relevance filter. relevant_files={relevant_files}")
+        # Retry 1: if we have explicit mentions, try restricting only to them
+        if mentioned_normalized:
+            hits = rag.vector_search(
+                user_id=user_id,
+                project_id=project_id,
+                query_vector=q_vec,
+                k=k,
+                filenames=mentioned_normalized
+            )
+            logger.info(f"[CHAT] Retry with mentioned files only → hits={len(hits) if hits else 0}")
+        # Retry 2: if still empty, try without any filename restriction
+        if not hits:
+            hits = rag.vector_search(
+                user_id=user_id,
+                project_id=project_id,
+                query_vector=q_vec,
+                k=k,
+                filenames=None
+            )
+            logger.info(f"[CHAT] Retry with all files → hits={len(hits) if hits else 0}")
+        # If still no hits, and we have mentioned files, try returning their summaries if present
+        if not hits and mentioned_normalized:
+            fsum_map = {f["filename"]: f.get("summary", "") for f in files_list}
+            summaries = [fsum_map.get(fn, "") for fn in mentioned_normalized]
+            summaries = [s for s in summaries if s]
+            if summaries:
+                answer = ("\n\n---\n\n").join(summaries)
+                return ChatAnswerResponse(
+                    answer=answer,
+                    sources=[{"filename": fn, "file_summary": True} for fn in mentioned_normalized],
+                    relevant_files=mentioned_normalized
+                )
+        if not hits:
+            return ChatAnswerResponse(
+                answer="I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",
+                sources=[],
+                relevant_files=relevant_files or mentioned_normalized
+            )
     # Compose context
     contexts = []
     sources_meta = []

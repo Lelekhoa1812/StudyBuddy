@@ -153,13 +153,53 @@
 
   function renderStoredFiles(files) {
     const container = document.getElementById('stored-file-items');
-    if (!container) return;
+    if (container) {
+      if (!files || files.length === 0) {
+        container.innerHTML = '<div class="muted">No files stored yet.</div>';
+      } else {
+        container.innerHTML = files.map(f => `<div class=\"pill\">${f.filename}</div>`).join(' ');
+      }
+    }
+    // Also render into Files page section
+    const list = document.getElementById('files-list');
+    if (!list) return;
     if (!files || files.length === 0) {
-      container.innerHTML = '<div class="muted">No files stored yet.</div>';
+      list.innerHTML = '<div class="muted">No files in this project.</div>';
       return;
     }
-    container.innerHTML = files.map(f => `<div class="pill">${f.filename}</div>`).join(' ');
+    list.innerHTML = files.map(f => `
+      <div class="file-card">
+        <div class="file-card-head">
+          <div class="file-name">${f.filename}</div>
+          <button class="file-del" data-fn="${encodeURIComponent(f.filename)}" title="Delete">🗑️</button>
+        </div>
+        <div class="file-summary">${(f.summary || '').replace(/</g,'&lt;')}</div>
+      </div>
+    `).join('');
+    // bind deletes
+    list.querySelectorAll('.file-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const filename = decodeURIComponent(btn.getAttribute('data-fn'));
+        if (!confirm(`Delete ${filename}? This will remove all related chunks.`)) return;
+        const user = window.__sb_get_user();
+        const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+        if (!user || !currentProject) return;
+        try {
+          const res = await fetch(`/files?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}&filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+          if (res.ok) {
+            await loadStoredFiles();
+          } else {
+            alert('Failed to delete file');
+          }
+        } catch {}
+      });
+    });
   }
+
+  // Expose show files section
+  window.__sb_show_files_section = async () => {
+    await loadStoredFiles();
+  };
 
   // Duplicate detection: returns {toUpload, replace, renameMap}
   async function resolveDuplicates(files) {

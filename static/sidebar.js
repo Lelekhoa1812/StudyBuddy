@@ -110,22 +110,22 @@
     switch (section) {
       case 'projects':
         // Projects section is always visible, no action needed
+        showSection('upload');
         break;
       case 'files':
-        // Could show file browser or file management interface
-        console.log('Navigate to Files section');
+        showSection('files');
+        if (window.__sb_show_files_section) {
+          window.__sb_show_files_section();
+        }
         break;
       case 'chat':
-        // Could show chat history or chat interface
-        console.log('Navigate to Chat section');
+        showSection('chat');
         break;
       case 'analytics':
         // Could show usage analytics or insights
-        console.log('Navigate to Analytics section');
         break;
       case 'settings':
         // Could show user settings or preferences
-        console.log('Navigate to Settings section');
         break;
     }
     
@@ -133,6 +133,16 @@
     if (window.innerWidth <= 1024) {
       collapseSidebar();
     }
+  }
+
+  function showSection(name) {
+    const upload = document.getElementById('upload-section');
+    const chat = document.getElementById('chat-section');
+    const files = document.getElementById('files-section');
+    if (!upload || !chat || !files) return;
+    upload.style.display = name === 'upload' ? 'block' : 'none';
+    chat.style.display = name === 'chat' ? 'block' : 'none';
+    files.style.display = name === 'files' ? 'block' : 'none';
   }
 
   function updatePageTitle() {

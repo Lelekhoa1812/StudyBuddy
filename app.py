@@ -525,6 +525,18 @@ async def list_project_files(user_id: str, project_id: str):
     return {"files": files, "filenames": filenames}
 
 
+@app.delete("/files", response_model=MessageResponse)
+async def delete_file(user_id: str, project_id: str, filename: str):
+    """Delete a file summary and associated chunks for a project."""
+    try:
+        rag.db["files"].delete_many({"user_id": user_id, "project_id": project_id, "filename": filename})
+        rag.db["chunks"].delete_many({"user_id": user_id, "project_id": project_id, "filename": filename})
+        logger.info(f"[FILES] Deleted file {filename} for user {user_id} project {project_id}")
+        return MessageResponse(message="File deleted")
+    except Exception as e:
+        raise HTTPException(500, detail=f"Failed to delete file: {str(e)}")
+
+
 @app.get("/cards")
 def list_cards(user_id: str, project_id: str, filename: Optional[str] = None, limit: int = 50, skip: int = 0):
     """List cards for a project"""

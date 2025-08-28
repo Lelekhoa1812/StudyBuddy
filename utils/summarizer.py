@@ -2,20 +2,24 @@ import os
 import asyncio
 from typing import List
 from .logger import get_logger
-from utils.rotator import robust_post_json
+from utils.rotator import robust_post_json, APIKeyRotator
 
 logger = get_logger("SUM", __name__)
+
+# Create a module-level NVIDIA API key rotator (uses NVIDIA_API_1..N)
+ROTATOR = APIKeyRotator(prefix="NVIDIA_API_", max_slots=5)
 
 
 async def llama_chat(messages, temperature: float = 0.2) -> str:
   model = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")
-  key = os.getenv("NVIDIA_API_1", "") or os.getenv("NVIDIA_API_KEY", "")
+  # Get key via rotator (supports rotation/retries in robust_post_json)
+  key = ROTATOR.get_key()
   if not key:
-    raise RuntimeError("NVIDIA API key not set")
+    raise RuntimeError("NVIDIA API key not set (NVIDIA_API_*)")
   url = "https://integrate.api.nvidia.com/v1/chat/completions"
   headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
   payload = {"model": model, "temperature": temperature, "messages": messages}
-  data = await robust_post_json(url, headers, payload)
+  data = await robust_post_json(url, headers, payload, ROTATOR)
   return data["choices"][0]["message"]["content"].strip()
 
 

@@ -8,91 +8,201 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="logo">
-        <div class="logo-icon">📚</div>
-        <div class="logo-text">
-          <h1>StudyBuddy</h1>
-          <p>AI-powered document analysis & chat</p>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">📚</div>
+          <div class="logo-text">
+            <h1>StudyBuddy</h1>
+            <p>AI Document Analysis</p>
+          </div>
         </div>
       </div>
-      <div class="auth-controls">
+
+      <!-- Website Menu -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <h3>Menu</h3>
+        </div>
+        <nav class="website-menu">
+          <a href="#" class="menu-item active" data-section="projects">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2-2z"/>
+              <path d="M8 5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2H8V5z"/>
+            </svg>
+            <span>Projects</span>
+          </a>
+          <a href="#" class="menu-item" data-section="files">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14,2 14,8 20,8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10,9 9,9 8,9"/>
+            </svg>
+            <span>Files</span>
+          </a>
+          <a href="#" class="menu-item" data-section="chat">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Chat</span>
+          </a>
+          <a href="#" class="menu-item" data-section="analytics">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3v18h18"/>
+              <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+            </svg>
+            <span>Analytics</span>
+          </a>
+          <a href="#" class="menu-item" data-section="settings">
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Settings</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Project Management -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <h3>Projects</h3>
+          <button id="new-project-btn" class="btn-icon" title="Create new project">+</button>
+        </div>
+        <div class="project-list" id="project-list">
+          <!-- Projects will be populated here -->
+        </div>
+      </div>
+
+      <!-- User Controls -->
+      <div class="sidebar-section">
+        <div class="section-header">
+          <h3>Account</h3>
+        </div>
         <div class="user-info" id="user-info" style="display:none;">
-          <span class="user-avatar">👤</span>
-          <span class="user-email" id="user-email"></span>
-          <button id="logout" class="btn-secondary">Logout</button>
-        </div>
-        <button id="theme-toggle" class="btn-icon" title="Toggle theme">🌙</button>
-      </div>
-    </header>
-
-    <section class="card reveal" id="upload-section">
-      <div class="card-header">
-        <h2>📁 Upload Documents</h2>
-        <p>Upload your PDFs and DOCX files to start chatting with your materials</p>
-      </div>
-      <form id="upload-form">
-        <div class="file-drop-zone" id="file-drop-zone">
-          <div class="drop-zone-content">
-            <div class="drop-zone-icon">📄</div>
-            <p>Drag & drop files here or click to browse</p>
-            <span class="file-types">Supports: PDF, DOCX</span>
+          <div class="user-avatar">👤</div>
+          <div class="user-details">
+            <span class="user-email" id="user-email"></span>
+            <button id="logout" class="btn-secondary">Logout</button>
           </div>
-          <input type="file" id="files" multiple accept=".pdf,.docx" hidden>
         </div>
-        <div class="file-list" id="file-list" style="display:none;">
-          <h4>Selected Files:</h4>
-          <div class="file-items" id="file-items"></div>
+        <div class="theme-toggle-wrapper">
+          <button id="theme-toggle" class="btn-icon" title="Toggle theme">🌙</button>
         </div>
-        <button type="submit" class="btn-primary" id="upload-btn">
-          <span class="btn-text">Upload Documents</span>
-          <span class="btn-loading" style="display:none;">
-            <div class="spinner"></div>
-            Processing...
-          </span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Top Bar with Hamburger Menu -->
+      <div class="top-bar">
+        <button id="sidebar-toggle" class="hamburger-menu" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
         </button>
-      </form>
-      <div class="upload-progress" id="upload-progress" style="display:none;">
-        <div class="progress-header">
-          <h4>Processing Documents</h4>
-          <span class="progress-status" id="progress-status">Initializing...</span>
+        <div class="top-bar-title">
+          <h2 id="page-title">StudyBuddy</h2>
         </div>
-        <div class="progress-bar">
-          <div class="progress-fill" id="progress-fill"></div>
-        </div>
-        <div class="progress-log" id="progress-log"></div>
       </div>
-    </section>
 
-    <section class="card reveal" id="chat-section">
-      <div class="card-header">
-        <h2>💬 Chat with Documents</h2>
-        <p>Ask questions about your uploaded materials and get AI-powered answers</p>
-      </div>
-      <div id="chat">
-        <div id="messages"></div>
-        <div class="chat-controls" id="chat-controls">
-          <div class="chat-input-wrapper">
-            <input type="text" id="question" placeholder="Ask something about your documents..." disabled>
-            <button id="ask" class="btn-primary" disabled>
-              <span class="btn-text">Ask</span>
-              <span class="btn-loading" style="display:none;">
-                <div class="spinner"></div>
-                Thinking...
-              </span>
-            </button>
+      <div class="content-container">
+        <!-- Project Header -->
+        <header class="project-header" id="project-header" style="display:none;">
+          <div class="project-info">
+            <h2 id="current-project-name">Project Name</h2>
+            <p id="current-project-description">Project description</p>
           </div>
-          <div class="chat-hint" id="chat-hint">
-            Upload documents first to start chatting
+          <div class="project-actions">
+            <button id="delete-project-btn" class="btn-secondary" style="display:none;">Delete Project</button>
+          </div>
+        </header>
+
+        <!-- Welcome Screen (when no project selected) -->
+        <div class="welcome-screen" id="welcome-screen">
+          <div class="welcome-content">
+            <div class="welcome-icon">🚀</div>
+            <h2>Welcome to StudyBuddy</h2>
+            <p>Create a new project to get started with AI-powered document analysis</p>
+            <button id="welcome-new-project" class="btn-primary">Create Your First Project</button>
           </div>
         </div>
-      </div>
-    </section>
 
-    <footer>
-      <small>StudyBuddy RAG • FastAPI on Hugging Face Spaces • MongoDB Vector • BLIP captions</small>
-    </footer>
+        <!-- Project Content (hidden until project selected) -->
+        <div class="project-content" id="project-content" style="display:none;">
+          <!-- Upload Section -->
+          <section class="card reveal" id="upload-section">
+            <div class="card-header">
+              <h2>📁 Upload Documents</h2>
+              <p>Upload your PDFs and DOCX files to start chatting with your materials</p>
+            </div>
+            <form id="upload-form">
+              <div class="file-drop-zone" id="file-drop-zone">
+                <div class="drop-zone-content">
+                  <div class="drop-zone-icon">📄</div>
+                  <p>Drag & drop files here or click to browse</p>
+                  <span class="file-types">Supports: PDF, DOCX</span>
+                </div>
+                <input type="file" id="files" multiple accept=".pdf,.docx" hidden>
+              </div>
+              <div class="file-list" id="file-list" style="display:none;">
+                <h4>Selected Files:</h4>
+                <div class="file-items" id="file-items"></div>
+              </div>
+              <button type="submit" class="btn-primary" id="upload-btn">
+                <span class="btn-text">Upload Documents</span>
+                <span class="btn-loading" style="display:none;">
+                  <div class="spinner"></div>
+                  Processing...
+                </span>
+              </button>
+            </form>
+            <div class="upload-progress" id="upload-progress" style="display:none;">
+              <div class="progress-header">
+                <h4>Processing Documents</h4>
+                <span class="progress-status" id="progress-status">Initializing...</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+              </div>
+              <div class="progress-log" id="progress-log"></div>
+            </div>
+          </section>
+
+          <!-- Chat Section -->
+          <section class="card reveal" id="chat-section">
+            <div class="card-header">
+              <h2>💬 Chat with Documents</h2>
+              <p>Ask questions about your uploaded materials and get AI-powered answers</p>
+            </div>
+            <div id="chat">
+              <div id="messages"></div>
+              <div class="chat-controls" id="chat-controls">
+                <div class="chat-input-wrapper">
+                  <input type="text" id="question" placeholder="Ask something about your documents..." disabled>
+                  <button id="ask" class="btn-primary" disabled>
+                    <span class="btn-text">Ask</span>
+                    <span class="btn-loading" style="display:none;">
+                      <div class="spinner"></div>
+                      Thinking...
+                    </span>
+                  </button>
+                </div>
+                <div class="chat-hint" id="chat-hint">
+                  Upload documents first to start chatting
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
   </div>
 
   <!-- Auth Modal -->
@@ -139,6 +249,30 @@
     </div>
   </div>
 
+  <!-- New Project Modal -->
+  <div id="new-project-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="new-project-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="new-project-title">Create New Project</h2>
+        <p class="modal-subtitle">Organize your documents into projects</p>
+      </div>
+      <form id="new-project-form">
+        <div class="form-group">
+          <label>Project Name</label>
+          <input type="text" id="project-name" placeholder="e.g., Research Paper, Course Notes" required>
+        </div>
+        <div class="form-group">
+          <label>Description (Optional)</label>
+          <textarea id="project-description" placeholder="Brief description of your project" rows="3"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="cancel-project" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Create Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="loading-content">
@@ -149,6 +283,8 @@
   </div>
 
   <script src="/static/auth.js"></script>
+  <script src="/static/sidebar.js"></script>
+  <script src="/static/projects.js"></script>
   <script src="/static/script.js"></script>
 </body>
 </html>

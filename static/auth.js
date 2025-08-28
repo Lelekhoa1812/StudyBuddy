@@ -20,6 +20,11 @@
       chatSection.style.display = 'block';
       // Hide modal if it was open
       modal.classList.add('hidden');
+      
+      // Trigger project loading after successful auth
+      if (window.__sb_load_projects) {
+        window.__sb_load_projects();
+      }
     } else {
       userInfo.style.display = 'none';
       // Disable app sections for unauthenticated users
@@ -43,6 +48,7 @@
 
   function clearUser() {
     localStorage.removeItem('sb_user');
+    localStorage.removeItem('sb_current_project');
     setAuthUI(null);
   }
 

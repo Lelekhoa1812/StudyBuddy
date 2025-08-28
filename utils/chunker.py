@@ -32,7 +32,7 @@ def _by_headings(text: str):
     return parts
 
 
-def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: str) -> List[Dict[str, Any]]:
+def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: str, project_id: str) -> List[Dict[str, Any]]:
     # Concatenate pages but keep page spans for metadata
     full = ""
     page_markers = []
@@ -74,6 +74,7 @@ def build_cards_from_pages(pages: List[Dict[str, Any]], filename: str, user_id: 
         last_page = pages[-1]['page_num'] if pages else 1
         out.append({
             "user_id": user_id,
+            "project_id": project_id,
             "filename": filename,
             "topic_name": topic[:120],
             "summary": summary,

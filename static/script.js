@@ -137,10 +137,13 @@
 
   function updateUploadButton() {
     const hasFiles = selectedFiles.length > 0;
-    uploadBtn.disabled = !hasFiles || isUploading;
+    const hasProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    uploadBtn.disabled = !hasFiles || !hasProject || isUploading;
     
-    if (hasFiles) {
+    if (hasFiles && hasProject) {
       uploadBtn.querySelector('.btn-text').textContent = `Upload ${selectedFiles.length} Document${selectedFiles.length > 1 ? 's' : ''}`;
+    } else if (!hasProject) {
+      uploadBtn.querySelector('.btn-text').textContent = 'Select a Project First';
     } else {
       uploadBtn.querySelector('.btn-text').textContent = 'Upload Documents';
     }
@@ -169,6 +172,12 @@
       return;
     }
 
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    if (!currentProject) {
+      alert('Please select a project first');
+      return;
+    }
+
     isUploading = true;
     updateUploadButton();
     showUploadProgress();
@@ -176,6 +185,7 @@
     try {
       const formData = new FormData();
       formData.append('user_id', user.user_id);
+      formData.append('project_id', currentProject.project_id);
       selectedFiles.forEach(file => formData.append('files', file));
 
       const response = await fetch('/upload', { method: 'POST', body: formData });
@@ -266,9 +276,18 @@
       return;
     }
 
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    if (!currentProject) {
+      alert('Please select a project first');
+      return;
+    }
+
     // Add user message
     appendMessage('user', question);
     questionInput.value = '';
+
+    // Save user message to chat history
+    await saveChatMessage(user.user_id, currentProject.project_id, 'user', question);
 
     // Add thinking message
     const thinkingMsg = appendMessage('thinking', 'Thinking...');
@@ -281,6 +300,7 @@
     try {
       const formData = new FormData();
       formData.append('user_id', user.user_id);
+      formData.append('project_id', currentProject.project_id);
       formData.append('question', question);
       formData.append('k', '6');
 
@@ -294,6 +314,9 @@
         // Add assistant response
         appendMessage('assistant', data.answer || 'No answer received');
         
+        // Save assistant message to chat history
+        await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.answer || 'No answer received');
+        
         // Add sources if available
         if (data.sources && data.sources.length > 0) {
           appendSources(data.sources);
@@ -303,13 +326,30 @@
       }
     } catch (error) {
       thinkingMsg.remove();
-      appendMessage('assistant', `⚠️ Error: ${error.message}`);
+      const errorMsg = `⚠️ Error: ${error.message}`;
+      appendMessage('assistant', errorMsg);
+      await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', errorMsg);
     } finally {
       // Re-enable input
       questionInput.disabled = false;
       askBtn.disabled = false;
       showButtonLoading(askBtn, false);
       questionInput.focus();
+    }
+  }
+
+  async function saveChatMessage(userId, projectId, role, content) {
+    try {
+      const formData = new FormData();
+      formData.append('user_id', userId);
+      formData.append('project_id', projectId);
+      formData.append('role', role);
+      formData.append('content', content);
+      formData.append('timestamp', Date.now() / 1000);
+      
+      await fetch('/chat/save', { method: 'POST', body: formData });
+    } catch (error) {
+      console.error('Failed to save chat message:', error);
     }
   }
 
@@ -376,9 +416,22 @@
   function checkUserAuth() {
     const user = window.__sb_get_user();
     if (user) {
-      enableChat();
+      // Check if we have a current project
+      const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+      if (currentProject) {
+        enableChat();
+      }
     }
   }
+
+  // Listen for project changes
+  window.addEventListener('projectChanged', () => {
+    updateUploadButton();
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    if (currentProject) {
+      enableChat();
+    }
+  });
 
   // Reveal animations
   const observer = new IntersectionObserver((entries) => {

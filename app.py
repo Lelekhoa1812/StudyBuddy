@@ -1,6 +1,7 @@
 # https://binkhoale1812-edsummariser.hf.space/
 import os, io, re, uuid, json, time, logging
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -46,6 +47,8 @@ embedder = EmbeddingClient(model_name=os.getenv("EMBED_MODEL", "sentence-transfo
 # Mongo / RAG store
 rag = RAGStore(mongo_uri=os.getenv("MONGO_URI"), db_name=os.getenv("MONGO_DB", "studybuddy"))
 ensure_indexes(rag)
+
+
 # ────────────────────────────── Auth Helpers/Routes ───────────────────────────
 import hashlib
 import secrets
@@ -96,6 +99,103 @@ async def login(email: str = Form(...), password: str = Form(...)):
     return {"email": email, "user_id": doc.get("user_id")}
 
 
+# ────────────────────────────── Project Management ───────────────────────────
+@app.post("/projects/create")
+async def create_project(user_id: str = Form(...), name: str = Form(...), description: str = Form("")):
+    """Create a new project for a user"""
+    if not name.strip():
+        raise HTTPException(400, detail="Project name is required")
+    
+    project_id = str(uuid.uuid4())
+    project = {
+        "project_id": project_id,
+        "user_id": user_id,
+        "name": name.strip(),
+        "description": description.strip(),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    rag.db["projects"].insert_one(project)
+    logger.info(f"[PROJECT] Created project {name} for user {user_id}")
+    return project
+
+
+@app.get("/projects")
+async def list_projects(user_id: str):
+    """List all projects for a user"""
+    projects = list(rag.db["projects"].find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).sort("updated_at", -1))
+    return {"projects": projects}
+
+
+@app.get("/projects/{project_id}")
+async def get_project(project_id: str, user_id: str):
+    """Get a specific project (with user ownership check)"""
+    project = rag.db["projects"].find_one(
+        {"project_id": project_id, "user_id": user_id},
+        {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(404, detail="Project not found")
+    return project
+
+
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: str, user_id: str):
+    """Delete a project and all its associated data"""
+    # Check ownership
+    project = rag.db["projects"].find_one({"project_id": project_id, "user_id": user_id})
+    if not project:
+        raise HTTPException(404, detail="Project not found")
+    
+    # Delete project and all associated data
+    rag.db["projects"].delete_one({"project_id": project_id})
+    rag.db["chunks"].delete_many({"project_id": project_id})
+    rag.db["files"].delete_many({"project_id": project_id})
+    rag.db["chat_sessions"].delete_many({"project_id": project_id})
+    
+    logger.info(f"[PROJECT] Deleted project {project_id} for user {user_id}")
+    return {"message": "Project deleted successfully"}
+
+
+# ────────────────────────────── Chat Sessions ──────────────────────────────
+@app.post("/chat/save")
+async def save_chat_message(
+    user_id: str = Form(...),
+    project_id: str = Form(...),
+    role: str = Form(...),
+    content: str = Form(...),
+    timestamp: Optional[float] = Form(None)
+):
+    """Save a chat message to the session"""
+    if role not in ["user", "assistant"]:
+        raise HTTPException(400, detail="Invalid role")
+    
+    message = {
+        "user_id": user_id,
+        "project_id": project_id,
+        "role": role,
+        "content": content,
+        "timestamp": timestamp or time.time(),
+        "created_at": datetime.utcnow()
+    }
+    
+    rag.db["chat_sessions"].insert_one(message)
+    return {"message": "Chat message saved"}
+
+
+@app.get("/chat/history")
+async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
+    """Get chat history for a project"""
+    messages = list(rag.db["chat_sessions"].find(
+        {"user_id": user_id, "project_id": project_id},
+        {"_id": 0}
+    ).sort("timestamp", 1).limit(limit))
+    return {"messages": messages}
+
 
 # ────────────────────────────── Helpers ──────────────────────────────
 def _infer_mime(filename: str) -> str:
@@ -131,6 +231,7 @@ async def upload_files(
     request: Request,
     background_tasks: BackgroundTasks,
     user_id: str = Form(...),
+    project_id: str = Form(...),
     files: List[UploadFile] = File(...),
 ):
     """
@@ -141,23 +242,27 @@ async def upload_files(
     3) Merge captions into page text
     4) Chunk into semantic cards (topic_name, summary, content + metadata)
     5) Embed with all-MiniLM-L6-v2
-    6) Store in MongoDB with per-user and per-filename metadata
+    6) Store in MongoDB with per-user and per-project metadata
     7) Create a file-level summary
     """
     job_id = str(uuid.uuid4())
+
     # Read file bytes upfront to avoid reading from closed streams in background task
     preloaded_files = []
     for uf in files:
         raw = await uf.read()
         preloaded_files.append((uf.filename, raw))
+
     # Process files in background   
     async def _process():
         total_cards = 0
         file_summaries = []
         for fname, raw in preloaded_files:
             logger.info(f"[{job_id}] Parsing {fname} ({len(raw)} bytes)")
+
             # Extract pages from file
             pages = _extract_pages(fname, raw)
+
             # Caption images per page (if any)
             num_imgs = sum(len(p.get("images", [])) for p in pages)
             captions = []
@@ -173,46 +278,58 @@ async def upload_files(
                     captions.append(caps)
             else:
                 captions = [[] for _ in pages]
+
             # Merge captions into text
             for idx, p in enumerate(pages):
                 if captions[idx]:
                     p["text"] = (p.get("text", "") + "\n\n" + "\n".join([f"[Image] {c}" for c in captions[idx]])).strip()
+
             # Build cards
-            cards = build_cards_from_pages(pages, filename=fname, user_id=user_id)
+            cards = build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
             logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
+
             # Embed & store
             embeddings = embedder.embed([c["content"] for c in cards])
             for c, vec in zip(cards, embeddings):
                 c["embedding"] = vec
+
             # Store cards in MongoDB on card
             rag.store_cards(cards)
             total_cards += len(cards)
+
             # File-level summary (cheap extractive)
             full_text = "\n\n".join(p.get("text", "") for p in pages)
             file_summary = cheap_summarize(full_text, max_sentences=6)
-            rag.upsert_file_summary(user_id=user_id, filename=fname, summary=file_summary)
+            rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
             file_summaries.append({"filename": fname, "summary": file_summary})
+
         logger.info(f"[{job_id}] Ingestion complete. Total cards: {total_cards}")
+
     # Kick off processing in background to keep UI responsive
     background_tasks.add_task(_process)
     return {"job_id": job_id, "status": "processing"}
 
 
 @app.get("/cards")
-def list_cards(user_id: str, filename: Optional[str] = None, limit: int = 50, skip: int = 0):
-    return rag.list_cards(user_id=user_id, filename=filename, limit=limit, skip=skip)
+def list_cards(user_id: str, project_id: str, filename: Optional[str] = None, limit: int = 50, skip: int = 0):
+    return rag.list_cards(user_id=user_id, project_id=project_id, filename=filename, limit=limit, skip=skip)
 
 
 @app.get("/file-summary")
-def get_file_summary(user_id: str, filename: str):
-    doc = rag.get_file_summary(user_id=user_id, filename=filename)
+def get_file_summary(user_id: str, project_id: str, filename: str):
+    doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=filename)
     if not doc:
         raise HTTPException(404, detail="No summary found for that file.")
     return {"filename": filename, "summary": doc.get("summary", "")}
 
 
 @app.post("/chat")
-async def chat(user_id: str = Form(...), question: str = Form(...), k: int = Form(6)):
+async def chat(
+    user_id: str = Form(...), 
+    project_id: str = Form(...), 
+    question: str = Form(...), 
+    k: int = Form(6)
+):
     """
     RAG chat that answers ONLY from uploaded materials.
     - Preload all filenames + summaries; use NVIDIA to classify file relevance to question (true/false)
@@ -230,14 +347,14 @@ async def chat(user_id: str = Form(...), question: str = Form(...), k: int = For
     # If the question is about a specific file, return the file summary
     if m:
         fn = m.group(1)
-        doc = rag.get_file_summary(user_id=user_id, filename=fn)
+        doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=fn)
         if doc:
             return {"answer": doc.get("summary", ""), "sources": [{"filename": fn, "file_summary": True}]}
         else:
             return {"answer": "I couldn't find a summary for that file in your library.", "sources": []}
-    
+        
     # 1) Preload file list + summaries
-    files_list = rag.list_files(user_id=user_id)  # [{filename, summary}]
+    files_list = rag.list_files(user_id=user_id, project_id=project_id)  # [{filename, summary}]
     # Ask NVIDIA to mark relevance per file
     relevant_map = await files_relevance(question, files_list, nvidia_rotator)
     relevant_files = [fn for fn, ok in relevant_map.items() if ok]
@@ -272,7 +389,7 @@ async def chat(user_id: str = Form(...), question: str = Form(...), k: int = For
 
     # 3) RAG vector search (restricted to relevant files if any)
     q_vec = embedder.embed([question])[0]
-    hits = rag.vector_search(user_id=user_id, query_vector=q_vec, k=k, filenames=relevant_files if relevant_files else None)
+    hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=k, filenames=relevant_files if relevant_files else None)
     if not hits:
         return {
             "answer": "I don't know based on your uploaded materials. Try uploading more sources or rephrasing the question.",

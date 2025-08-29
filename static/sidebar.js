@@ -60,6 +60,8 @@
 
   function expandSidebar() {
     sidebar.classList.remove('collapsed');
+    // On mobile, use the 'open' class to slide in (as defined in CSS @media <=1024px)
+    sidebar.classList.add('open');
     mainContent.classList.remove('sidebar-collapsed');
     isSidebarOpen = true;
     
@@ -69,6 +71,8 @@
 
   function collapseSidebar() {
     sidebar.classList.add('collapsed');
+    // On mobile, remove the 'open' class to hide
+    sidebar.classList.remove('open');
     mainContent.classList.add('sidebar-collapsed');
     isSidebarOpen = false;
     

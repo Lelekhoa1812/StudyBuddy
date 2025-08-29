@@ -202,12 +202,14 @@
               <div class="chat-controls" id="chat-controls">
                 <div class="chat-input-wrapper">
                   <textarea id="question" placeholder="Ask something about your documents..." rows="2" disabled></textarea>
-                  <button id="ask" class="btn-primary" disabled>
-                    <span class="btn-text">Submit</span>
+                  <button id="ask" class="send-btn" aria-label="Submit" disabled>
                     <span class="btn-loading" style="display:none;">
                       <div class="spinner"></div>
-                      Thinking...
                     </span>
+                    <svg class="send-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 12h14"/>
+                      <path d="M12 5l7 7-7 7"/>
+                    </svg>
                   </button>
                 </div>
                 <div class="chat-underbar">

@@ -144,7 +144,9 @@ class RAGStore:
             q = {"user_id": user_id, "project_id": project_id}
             if filenames:
                 q["filename"] = {"$in": filenames}
-            sample = list(self.chunks.find(q).limit(max(2000, k*10)))
+            # Prefer recent inserts to increase chance of hits; widen sample size modestly
+            sample_limit = max(3000, k * 20)
+            sample = list(self.chunks.find(q).sort([("_id", -1)]).limit(sample_limit))
             if not sample:
                 return []
             qv = np.array(query_vector, dtype="float32")

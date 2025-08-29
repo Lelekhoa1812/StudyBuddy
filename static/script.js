@@ -516,6 +516,8 @@
           thinkingMsg.remove();
           appendMessage('assistant', data.report_markdown || 'No report');
           if (data.sources && data.sources.length) appendSources(data.sources);
+          // Save assistant report to chat history for persistence
+          try { await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.report_markdown || 'No report'); } catch {}
         } else {
           throw new Error(data.detail || 'Failed to generate report');
         }
@@ -568,12 +570,26 @@
 
   function autoGrowTextarea() {
     if (!questionInput) return;
+    // Reset height to measure content size
     questionInput.style.height = 'auto';
+    const style = window.getComputedStyle(questionInput);
+    const borderTop = parseInt(style.borderTopWidth) || 0;
+    const borderBottom = parseInt(style.borderBottomWidth) || 0;
+    const paddingTop = parseInt(style.paddingTop) || 0;
+    const paddingBottom = parseInt(style.paddingBottom) || 0;
+    const boxExtras = borderTop + borderBottom + paddingTop + paddingBottom;
+    const contentHeight = questionInput.scrollHeight - boxExtras;
     const lineHeight = 22; // approx for 16px font
     const minRows = 2;
     const maxRows = 7;
-    const lines = Math.min(maxRows, Math.max(minRows, Math.ceil(questionInput.scrollHeight / lineHeight)));
-    questionInput.rows = lines;
+    // Compute rows required based on content height, clamped
+    const neededRows = Math.ceil(contentHeight / lineHeight);
+    const clamped = Math.min(maxRows, Math.max(minRows, neededRows));
+    questionInput.rows = clamped;
+    // Prevent jumpy growth for long single lines by restricting until wrap actually occurs
+    // If no wrap (scrollWidth <= clientWidth), keep at least minRows
+    const isWrapping = questionInput.scrollWidth > questionInput.clientWidth;
+    if (!isWrapping) questionInput.rows = Math.min(questionInput.rows, minRows);
   }
 
   async function handleGenerateReport() {

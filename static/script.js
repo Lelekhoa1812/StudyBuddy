@@ -11,7 +11,7 @@
   const progressFill = document.getElementById('progress-fill');
   const progressLog = document.getElementById('progress-log');
   const questionInput = document.getElementById('question');
-  const askBtn = document.getElementById('ask');
+  const sendBtn = document.getElementById('send-btn');
   const chatHint = document.getElementById('chat-hint');
   const messages = document.getElementById('messages');
   const reportLink = document.getElementById('report-link');
@@ -73,7 +73,7 @@
     document.getElementById('upload-form').addEventListener('submit', handleUpload);
     
     // Chat
-    askBtn.addEventListener('click', handleAsk);
+    sendBtn.addEventListener('click', handleAsk);
     // Convert to textarea behavior: Enter submits, Shift+Enter for newline
     questionInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -460,7 +460,7 @@
 
   function enableChat() {
     questionInput.disabled = false;
-    askBtn.disabled = false;
+    sendBtn.disabled = false;
     chatHint.style.display = 'none';
     autoGrowTextarea();
   }
@@ -495,8 +495,8 @@
     
     // Disable input during processing
     questionInput.disabled = true;
-    askBtn.disabled = true;
-    showButtonLoading(askBtn, true);
+    sendBtn.disabled = true;
+    showButtonLoading(sendBtn, true);
 
     try {
       // Branch: if report mode is active → call /report with textarea as instructions
@@ -546,8 +546,8 @@
     } finally {
       // Re-enable input
       questionInput.disabled = false;
-      askBtn.disabled = false;
-      showButtonLoading(askBtn, false);
+      sendBtn.disabled = false;
+      showButtonLoading(sendBtn, false);
       questionInput.focus();
     }
   }

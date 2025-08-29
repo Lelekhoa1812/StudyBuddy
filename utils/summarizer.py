@@ -29,7 +29,7 @@ async def llama_summarize(text: str, max_sentences: int = 3) -> str:
     return ""
   system = (
     "You are a precise summarizer. Produce a clear, faithful summary of the user's text. "
-    f"Return ~{max_sentences} sentences, no preface, no markdown."
+    f"Return ~{max_sentences} sentences, no comments, no preface, no markdown."
   )
   user = f"Summarize this text:\n\n{text}"
   try:

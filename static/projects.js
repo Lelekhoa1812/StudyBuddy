@@ -289,7 +289,7 @@
 
   function enableChat() {
     const questionInput = document.getElementById('question');
-    const askBtn = document.getElementById('ask');
+    const askBtn = document.getElementById('send-btn');
     const chatHint = document.getElementById('chat-hint');
     
     if (currentProject) {

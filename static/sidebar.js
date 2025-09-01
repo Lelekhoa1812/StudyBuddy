@@ -113,8 +113,11 @@
     // Handle section-specific actions
     switch (section) {
       case 'projects':
-        // Projects section is always visible, no action needed
+        // Projects section shows upload by default, but keep chat visible too
         showSection('upload');
+        // Also show chat section when in projects view
+        const chat = document.getElementById('chat-section');
+        if (chat) chat.style.display = 'block';
         break;
       case 'files':
         showSection('files');
@@ -144,9 +147,14 @@
     const chat = document.getElementById('chat-section');
     const files = document.getElementById('files-section');
     if (!upload || !chat || !files) return;
+    // Show upload section for projects, files section for files, chat section for chat
     upload.style.display = name === 'upload' ? 'block' : 'none';
     chat.style.display = name === 'chat' ? 'block' : 'none';
     files.style.display = name === 'files' ? 'block' : 'none';
+    // Enable chat functionality when chat section is visible
+    if (name === 'chat' && window.__sb_enable_chat) {
+      window.__sb_enable_chat();
+    }
   }
 
   function updatePageTitle() {

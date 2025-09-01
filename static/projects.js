@@ -124,6 +124,17 @@
     welcomeScreen.style.display = 'none';
     projectContent.style.display = 'block';
     
+    // Show both upload and chat sections by default
+    const uploadSection = document.getElementById('upload-section');
+    const chatSection = document.getElementById('chat-section');
+    if (uploadSection) uploadSection.style.display = 'block';
+    if (chatSection) chatSection.style.display = 'block';
+    
+    // Enable chat functionality when project is selected
+    if (window.__sb_enable_chat) {
+      window.__sb_enable_chat();
+    }
+    
     // Update project list
     renderProjectList();
     

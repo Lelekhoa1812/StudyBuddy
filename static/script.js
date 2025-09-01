@@ -27,6 +27,26 @@
   init();
 
   function init() {
+    console.log('[SCRIPT] Initializing script.js...');
+    console.log('[SCRIPT] DOM elements found:', {
+      fileDropZone: !!fileDropZone,
+      fileInput: !!fileInput,
+      fileList: !!fileList,
+      fileItems: !!fileItems,
+      uploadBtn: !!uploadBtn,
+      uploadProgress: !!uploadProgress,
+      progressStatus: !!progressStatus,
+      progressFill: !!progressFill,
+      progressLog: !!progressLog,
+      questionInput: !!questionInput,
+      sendBtn: !!sendBtn,
+      chatHint: !!chatHint,
+      messages: !!messages,
+      reportLink: !!reportLink,
+      loadingOverlay: !!loadingOverlay,
+      loadingMessage: !!loadingMessage
+    });
+    
     setupFileDropZone();
     setupEventListeners();
     checkUserAuth();
@@ -38,6 +58,8 @@
     
     // Initial button state update
     updateUploadButton();
+    
+    console.log('[SCRIPT] Initialization complete');
   }
 
   function setupFileDropZone() {
@@ -69,19 +91,38 @@
   }
 
   function setupEventListeners() {
+    console.log('[SCRIPT] Setting up event listeners...');
+    
     // Upload form
-    document.getElementById('upload-form').addEventListener('submit', handleUpload);
+    const uploadForm = document.getElementById('upload-form');
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', handleUpload);
+      console.log('[SCRIPT] Upload form listener added');
+    } else {
+      console.error('[SCRIPT] Upload form not found!');
+    }
     
     // Chat
-    sendBtn.addEventListener('click', handleAsk);
-    // Convert to textarea behavior: Enter submits, Shift+Enter for newline
-    questionInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleAsk();
-      }
-    });
-    questionInput.addEventListener('input', autoGrowTextarea);
+    if (sendBtn) {
+      sendBtn.addEventListener('click', handleAsk);
+      console.log('[SCRIPT] Send button click listener added');
+    } else {
+      console.error('[SCRIPT] Send button not found!');
+    }
+    
+    if (questionInput) {
+      // Convert to textarea behavior: Enter submits, Shift+Enter for newline
+      questionInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleAsk();
+        }
+      });
+      questionInput.addEventListener('input', autoGrowTextarea);
+      console.log('[SCRIPT] Question input listeners added');
+    } else {
+      console.error('[SCRIPT] Question input not found!');
+    }
 
     // Clear chat history
     const clearBtn = document.getElementById('clear-chat-btn');
@@ -98,16 +139,33 @@
           } else {
             alert('Failed to clear history');
           }
-        } catch {}
+        } catch (e) {
+          console.error('Failed to clear chat history:', e);
+        }
       });
     }
-    // Report link toggle
+
+    // Report mode toggle
     if (reportLink) {
       reportLink.addEventListener('click', (e) => {
         e.preventDefault();
         toggleReportMode();
       });
     }
+
+    // New project form
+    const newProjectForm = document.getElementById('new-project-form');
+    if (newProjectForm) {
+      newProjectForm.addEventListener('submit', handleCreateProject);
+    }
+
+    // Cancel project button
+    const cancelProjectBtn = document.getElementById('cancel-project');
+    if (cancelProjectBtn) {
+      cancelProjectBtn.addEventListener('click', hideNewProjectModal);
+    }
+
+    console.log('[SCRIPT] Event listeners setup complete');
   }
 
   function handleFileSelection(files) {
@@ -459,17 +517,27 @@
   }
 
   function enableChat() {
+    console.log('[SCRIPT] enableChat called');
+    console.log('[SCRIPT] Before enabling - questionInput.disabled:', questionInput.disabled);
+    console.log('[SCRIPT] Before enabling - sendBtn.disabled:', sendBtn.disabled);
+    
     questionInput.disabled = false;
     sendBtn.disabled = false;
     chatHint.style.display = 'none';
     autoGrowTextarea();
+    
+    console.log('[SCRIPT] After enabling - questionInput.disabled:', questionInput.disabled);
+    console.log('[SCRIPT] After enabling - sendBtn.disabled:', sendBtn.disabled);
+    console.log('[SCRIPT] Chat enabled successfully');
   }
 
   async function handleAsk() {
+    console.log('[SCRIPT] handleAsk called');
     const question = questionInput.value.trim();
     if (!question) return;
 
     const user = window.__sb_get_user();
+    console.log('[SCRIPT] User:', user);
     if (!user) {
       alert('Please sign in to chat');
       window.__sb_show_auth_modal();
@@ -477,11 +545,13 @@
     }
 
     const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    console.log('[SCRIPT] Current project:', currentProject);
     if (!currentProject) {
       alert('Please select a project first');
       return;
     }
 
+    console.log('[SCRIPT] Starting chat request...');
     // Add user message
     appendMessage('user', question);
     questionInput.value = '';
@@ -501,6 +571,7 @@
     try {
       // Branch: if report mode is active → call /report with textarea as instructions
       if (isReportModeActive()) {
+        console.log('[SCRIPT] Report mode active, calling /report');
         const filename = pickActiveFilename();
         if (!filename) throw new Error('Please select a document to generate a report');
         const form = new FormData();
@@ -522,13 +593,21 @@
           throw new Error(data.detail || 'Failed to generate report');
         }
       } else {
+        console.log('[SCRIPT] Chat mode active, calling /chat');
         const formData = new FormData();
         formData.append('user_id', user.user_id);
         formData.append('project_id', currentProject.project_id);
         formData.append('question', question);
         formData.append('k', '6');
+        console.log('[SCRIPT] Sending request to /chat with data:', {
+          user_id: user.user_id,
+          project_id: currentProject.project_id,
+          question: question
+        });
         const response = await fetch('/chat', { method: 'POST', body: formData });
+        console.log('[SCRIPT] Response status:', response.status);
         const data = await response.json();
+        console.log('[SCRIPT] Response data:', data);
         if (response.ok) {
           thinkingMsg.remove();
           appendMessage('assistant', data.answer || 'No answer received');
@@ -539,6 +618,7 @@
         }
       }
     } catch (error) {
+      console.error('[SCRIPT] Error in handleAsk:', error);
       thinkingMsg.remove();
       const errorMsg = `⚠️ Error: ${error.message}`;
       appendMessage('assistant', errorMsg);
@@ -663,10 +743,16 @@
     // Render Markdown for assistant messages
     if (role === 'assistant') {
       try {
-        // Use marked library to convert Markdown to HTML
-        const htmlContent = marked.parse(text);
-        messageDiv.innerHTML = htmlContent;
+        // Check if marked library is available
+        if (typeof marked !== 'undefined' && marked.parse) {
+          const htmlContent = marked.parse(text);
+          messageDiv.innerHTML = htmlContent;
+        } else {
+          console.warn('[SCRIPT] Marked library not available, using plain text');
+          messageDiv.textContent = text;
+        }
       } catch (e) {
+        console.error('[SCRIPT] Markdown parsing failed:', e);
         // Fallback to plain text if Markdown parsing fails
         messageDiv.textContent = text;
       }
@@ -706,16 +792,16 @@
   }
 
   function showButtonLoading(button, isLoading) {
-    const textSpan = button.querySelector('.btn-text');
     const loadingSpan = button.querySelector('.btn-loading');
+    const sendIcon = button.querySelector('.send-icon');
     
     if (isLoading) {
-      textSpan.style.display = 'none';
-      loadingSpan.style.display = 'inline-flex';
+      if (loadingSpan) loadingSpan.style.display = 'inline-flex';
+      if (sendIcon) sendIcon.style.display = 'none';
       button.disabled = true;
     } else {
-      textSpan.style.display = 'inline';
-      loadingSpan.style.display = 'none';
+      if (loadingSpan) loadingSpan.style.display = 'none';
+      if (sendIcon) sendIcon.style.display = 'inline';
       button.disabled = false;
     }
   }
@@ -730,13 +816,21 @@
   }
 
   function checkUserAuth() {
+    console.log('[SCRIPT] checkUserAuth called');
     const user = window.__sb_get_user();
+    console.log('[SCRIPT] User from localStorage:', user);
     if (user) {
       // Check if we have a current project
       const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+      console.log('[SCRIPT] Current project:', currentProject);
       if (currentProject) {
+        console.log('[SCRIPT] Enabling chat for project:', currentProject.name);
         enableChat();
+      } else {
+        console.log('[SCRIPT] No current project, chat remains disabled');
       }
+    } else {
+      console.log('[SCRIPT] No user found, chat remains disabled');
     }
     // Always update upload button state
     updateUploadButton();

@@ -606,6 +606,7 @@ async def generate_report(
     1) Gemini Flash: create a structured outline based on file summary + top chunks
     2) Gemini Pro: expand into a full report with citations
     """
+    logger.info("[REPORT] User Q/report: %s", trim_text(instructions, 15).replace("\n", " "))
     # Validate file exists
     files_list = rag.list_files(user_id=user_id, project_id=project_id)
     filenames_ci = {f.get("filename", "").lower(): f.get("filename") for f in files_list}
@@ -626,7 +627,7 @@ async def generate_report(
     sources_meta = []
     for h in hits:
         doc = h["doc"]
-        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 1600)}")
+        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 2000)}")
         sources_meta.append({
             "filename": doc.get("filename"),
             "topic_name": doc.get("topic_name"),
@@ -749,6 +750,7 @@ async def _chat_impl(
     from memo.history import summarize_qa_with_nvidia, files_relevance, related_recent_and_semantic_context
     from utils.router import NVIDIA_SMALL  # reuse default name
     memory = app.state.__dict__.setdefault("memory_lru", MemoryLRU())
+    logger.info("[CHAT] User Q/chat: %s", trim_text(question, 15).replace("\n", " "))
 
     # 0) Detect any filenames mentioned in the question (e.g., JADE.pdf)
     #    Supports .pdf, .docx, and .doc for detection purposes
@@ -917,7 +919,7 @@ async def _chat_impl(
     for h in hits:
         doc = h["doc"]
         score = h["score"]
-        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 1200)}")
+        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 2000)}")
         sources_meta.append({
             "filename": doc.get("filename"),
             "topic_name": doc.get("topic_name"),

@@ -678,7 +678,7 @@ async def generate_report(
     ).format(max(100, outline_words))
     
     instruction_context = f"USER_REQUEST: {instructions}\n\n" if instructions.strip() else ""
-    user_outline = f"{instruction_context}MATERIALS:\n\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
+    user_outline = f"{instruction_context}MATERIALS:\n\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
 
     try:
         # Step 1: Outline with Flash/Med
@@ -696,12 +696,12 @@ async def generate_report(
         "- Structure the report to answer exactly what the user asked for\n"
         "- Use clear section headings\n"
         "- Keep content factual and grounded in the provided materials\n"
-        "- Include brief citations like (source: filename, topic)\n"
+        f"- Include brief citations like (source: {eff_name}, topic) - use the actual filename provided\n"
         "- If the user asked for a specific section/topic, focus heavily on that\n"
         f"- Target length ~{max(600, report_words)} words\n"
         "- Ensure the report directly fulfills the user's request"
     )
-    user_report = f"{instruction_focus}OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
+    user_report = f"{instruction_focus}OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
 
     try:
         selection_report = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
@@ -940,7 +940,8 @@ async def _chat_impl(
     system_prompt = (
         "You are a careful study assistant. Answer strictly using the given CONTEXT.\n"
         "If the answer isn't in the context, say 'I don't know based on the provided materials.'\n"
-        "Write concise, clear explanations with citations like (source: filename, topic).\n"
+        "Write concise, clear explanations with citations like (source: actual_filename, topic).\n"
+        "Use the exact filename as provided in the context, not placeholders.\n"
     )
 
     # Add recent chat context and historical similarity context

@@ -635,11 +635,45 @@ async def generate_report(
 
     # Chain-of-thought style two-step with Gemini
     from utils.router import GEMINI_MED, GEMINI_PRO
+    
+    # Step 1: Content filtering and relevance assessment based on user instructions
+    if instructions.strip():
+        filter_sys = (
+            "You are an expert content analyst. Given the user's specific instructions and the document content, "
+            "identify which sections/chunks are MOST relevant to their request. "
+            "Return a JSON object with this structure: {\"relevant_chunks\": [\"chunk_id_1\", \"chunk_id_2\"], \"focus_areas\": [\"key topic 1\", \"key topic 2\"]}"
+        )
+        filter_user = f"USER_INSTRUCTIONS: {instructions}\n\nDOCUMENT_SUMMARY: {file_summary}\n\nAVAILABLE_CHUNKS:\n{context_text}\n\nIdentify only the chunks that directly address the user's specific request."
+        
+        try:
+            selection_filter = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
+            filter_response = await generate_answer_with_model(selection_filter, filter_sys, filter_user, gemini_rotator, nvidia_rotator)
+            # Try to parse the filter response to get relevant chunks
+            import json
+            try:
+                filter_data = json.loads(filter_response)
+                relevant_chunk_ids = filter_data.get("relevant_chunks", [])
+                focus_areas = filter_data.get("focus_areas", [])
+                logger.info(f"[REPORT] Content filtering identified {len(relevant_chunk_ids)} relevant chunks and focus areas: {focus_areas}")
+                # Filter context to only relevant chunks
+                if relevant_chunk_ids and hits:
+                    filtered_hits = [h for h in hits if str(h["doc"].get("_id", "")) in relevant_chunk_ids]
+                    if filtered_hits:
+                        hits = filtered_hits
+                        logger.info(f"[REPORT] Filtered context from {len(hits)} chunks to {len(filtered_hits)} relevant chunks")
+            except json.JSONDecodeError:
+                logger.warning(f"[REPORT] Could not parse filter response, using all chunks: {filter_response}")
+        except Exception as e:
+            logger.warning(f"[REPORT] Content filtering failed: {e}")
+    
+    # Step 2: Create focused outline based on user instructions
     sys_outline = (
-        "You are an expert technical writer. Create a concise, hierarchical outline for a report based on the MATERIALS. "
-        "Output as Markdown bullet list only. Keep it within about {} words."
+        "You are an expert technical writer. Create a focused, hierarchical outline for a report based on the user's specific instructions and the MATERIALS. "
+        "The outline should directly address what the user asked for. Output as Markdown bullet list only. Keep it within about {} words."
     ).format(max(100, outline_words))
-    user_outline = f"MATERIALS:\n\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\nINSTRUCTIONS (if any):\n{instructions}"
+    
+    instruction_context = f"USER_REQUEST: {instructions}\n\n" if instructions.strip() else ""
+    user_outline = f"{instruction_context}MATERIALS:\n\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
 
     try:
         # Step 1: Outline with Flash/Med
@@ -649,12 +683,20 @@ async def generate_report(
         logger.warning(f"Report outline failed: {e}")
         outline_md = "# Report Outline\n\n- Introduction\n- Key Topics\n- Conclusion"
 
+    # Step 3: Generate focused report based on user instructions and filtered content
+    instruction_focus = f"FOCUS ON: {instructions}\n\n" if instructions.strip() else ""
     sys_report = (
-        "You are an expert report writer. Using the OUTLINE and MATERIALS, write a comprehensive Markdown report. "
-        "- Use section headings\n- Keep it factual and grounded in the materials\n- Include brief citations like (source: filename, topic). "
-        f"Target length ~{max(600, report_words)} words."
+        "You are an expert report writer. Write a focused, comprehensive Markdown report that directly addresses the user's specific request. "
+        "Using the OUTLINE and MATERIALS:\n"
+        "- Structure the report to answer exactly what the user asked for\n"
+        "- Use clear section headings\n"
+        "- Keep content factual and grounded in the provided materials\n"
+        "- Include brief citations like (source: filename, topic)\n"
+        "- If the user asked for a specific section/topic, focus heavily on that\n"
+        f"- Target length ~{max(600, report_words)} words\n"
+        "- Ensure the report directly fulfills the user's request"
     )
-    user_report = f"OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\nINSTRUCTIONS (if any):\n{instructions}"
+    user_report = f"{instruction_focus}OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
 
     try:
         selection_report = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
@@ -672,6 +714,24 @@ async def chat(
     project_id: str = Form(...), 
     question: str = Form(...), 
     k: int = Form(6)
+):
+    # Add timeout protection to prevent hanging
+    import asyncio
+    try:
+        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k), timeout=120.0)
+    except asyncio.TimeoutError:
+        logger.error("[CHAT] Chat request timed out after 120 seconds")
+        return ChatAnswerResponse(
+            answer="Sorry, the request took too long to process. Please try again with a simpler question.",
+            sources=[],
+            relevant_files=[]
+        )
+
+async def _chat_impl(
+    user_id: str, 
+    project_id: str, 
+    question: str, 
+    k: int
 ):
     """
     RAG chat that answers ONLY from uploaded materials.
@@ -737,9 +797,13 @@ async def chat(
         logger.info(f"[CHAT] Normalized mentions to stored filenames: {mentioned_normalized}")
 
     # 1b) Ask NVIDIA to mark relevance per file
-    relevant_map = await files_relevance(question, files_list, nvidia_rotator)
-    relevant_files = [fn for fn, ok in relevant_map.items() if ok]
-    logger.info(f"[CHAT] NVIDIA relevant files: {relevant_files}")
+    try:
+        relevant_map = await files_relevance(question, files_list, nvidia_rotator)
+        relevant_files = [fn for fn, ok in relevant_map.items() if ok]
+        logger.info(f"[CHAT] NVIDIA relevant files: {relevant_files}")
+    except Exception as e:
+        logger.warning(f"[CHAT] NVIDIA relevance failed, defaulting to all files: {e}")
+        relevant_files = [f.get("filename") for f in files_list if f.get("filename")]
 
     # 1c) Ensure any explicitly mentioned files in the question are included
     #     This safeguards against model misclassification
@@ -778,6 +842,7 @@ async def chat(
             recent_related = ""
 
     # 3) RAG vector search (restricted to relevant files if any)
+    logger.info(f"[CHAT] Starting vector search with relevant_files={relevant_files}")
     q_vec = embedder.embed([question])[0]
     hits = rag.vector_search(
         user_id=user_id,
@@ -786,6 +851,7 @@ async def chat(
         k=k,
         filenames=relevant_files if relevant_files else None
     )
+    logger.info(f"[CHAT] Vector search returned {len(hits) if hits else 0} hits")
     if not hits:
         logger.info(f"[CHAT] No hits with relevance filter. relevant_files={relevant_files}")
         # Retry 1: if we have explicit mentions, try restricting only to them
@@ -840,6 +906,7 @@ async def chat(
                 sources=[],
                 relevant_files=relevant_files or mentioned_normalized
             )
+        # If we get here, we have hits, so continue with normal flow
     # Compose context
     contexts = []
     sources_meta = []
@@ -887,6 +954,7 @@ async def chat(
     selection = select_model(question=question, context=composed_context)
     logger.info(f"Model selection: {selection}")
     # Generate answer with model
+    logger.info(f"[CHAT] Generating answer with {selection['provider']} {selection['model']}")
     try:
         answer = await generate_answer_with_model(
             selection=selection,
@@ -895,6 +963,7 @@ async def chat(
             gemini_rotator=gemini_rotator,
             nvidia_rotator=nvidia_rotator
         )
+        logger.info(f"[CHAT] Answer generated successfully, length: {len(answer)}")
     except Exception as e:
         logger.error(f"LLM error: {e}")
         answer = "I had trouble contacting the language model provider just now. Please try again."

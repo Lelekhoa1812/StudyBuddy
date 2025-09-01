@@ -514,7 +514,7 @@
         const data = await response.json();
         if (response.ok) {
           thinkingMsg.remove();
-          appendMessage('assistant', data.report_markdown || 'No report');
+          appendMessage('assistant', data.report_markdown || 'No report', true); // isReport = true
           if (data.sources && data.sources.length) appendSources(data.sources);
           // Save assistant report to chat history for persistence
           try { await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.report_markdown || 'No report'); } catch {}
@@ -656,7 +656,7 @@
     }
   }
   
-  function appendMessage(role, text) {
+  function appendMessage(role, text, isReport = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `msg ${role}`;
     
@@ -666,6 +666,14 @@
         // Use marked library to convert Markdown to HTML
         const htmlContent = marked.parse(text);
         messageDiv.innerHTML = htmlContent;
+        
+        // Add copy buttons to code blocks
+        addCopyButtonsToCodeBlocks(messageDiv);
+        
+        // Add download PDF button for reports
+        if (isReport) {
+          addDownloadPdfButton(messageDiv, text);
+        }
       } catch (e) {
         // Fallback to plain text if Markdown parsing fails
         messageDiv.textContent = text;
@@ -682,6 +690,187 @@
     });
     
     return messageDiv;
+  }
+
+  function addCopyButtonsToCodeBlocks(messageDiv) {
+    const codeBlocks = messageDiv.querySelectorAll('pre code');
+    codeBlocks.forEach((codeBlock, index) => {
+      const pre = codeBlock.parentElement;
+      const language = codeBlock.className.match(/language-(\w+)/)?.[1] || 'code';
+      
+      // Create wrapper
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-block-wrapper';
+      
+      // Create header with language and copy button
+      const header = document.createElement('div');
+      header.className = 'code-block-header';
+      header.innerHTML = `
+        <span class="code-block-language">${language}</span>
+        <button class="copy-code-btn" data-code-index="${index}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          Copy
+        </button>
+      `;
+      
+      // Create content wrapper
+      const content = document.createElement('div');
+      content.className = 'code-block-content';
+      content.appendChild(codeBlock.cloneNode(true));
+      
+      // Assemble wrapper
+      wrapper.appendChild(header);
+      wrapper.appendChild(content);
+      
+      // Replace original pre with wrapper
+      pre.parentNode.replaceChild(wrapper, pre);
+      
+      // Add click handler for copy button
+      const copyBtn = wrapper.querySelector('.copy-code-btn');
+      copyBtn.addEventListener('click', () => copyCodeToClipboard(codeBlock.textContent, copyBtn));
+    });
+  }
+
+  function copyCodeToClipboard(code, button) {
+    navigator.clipboard.writeText(code).then(() => {
+      const originalText = button.innerHTML;
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20,6 9,17 4,12"></polyline>
+        </svg>
+        Copied!
+      `;
+      button.classList.add('copied');
+      
+      setTimeout(() => {
+        button.innerHTML = originalText;
+        button.classList.remove('copied');
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy code:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        button.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20,6 9,17 4,12"></polyline>
+          </svg>
+          Copied!
+        `;
+        button.classList.add('copied');
+        setTimeout(() => {
+          button.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          `;
+          button.classList.remove('copied');
+        }, 2000);
+      } catch (fallbackErr) {
+        console.error('Fallback copy failed:', fallbackErr);
+      }
+      document.body.removeChild(textArea);
+    });
+  }
+
+  function addDownloadPdfButton(messageDiv, reportContent) {
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'download-pdf-btn';
+    downloadBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7,10 12,15 17,10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      Download PDF
+    `;
+    
+    downloadBtn.addEventListener('click', () => downloadReportAsPdf(reportContent, downloadBtn));
+    messageDiv.appendChild(downloadBtn);
+  }
+
+  async function downloadReportAsPdf(reportContent, button) {
+    const user = window.__sb_get_user();
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    
+    if (!user || !currentProject) {
+      alert('Please sign in and select a project');
+      return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12,6 12,12 16,14"></polyline>
+      </svg>
+      Generating PDF...
+    `;
+
+    try {
+      const formData = new FormData();
+      formData.append('user_id', user.user_id);
+      formData.append('project_id', currentProject.project_id);
+      formData.append('report_content', reportContent);
+
+      const response = await fetch('/report/pdf', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        button.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20,6 9,17 4,12"></polyline>
+          </svg>
+          Downloaded!
+        `;
+        setTimeout(() => {
+          button.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7,10 12,15 17,10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download PDF
+          `;
+          button.disabled = false;
+        }, 2000);
+      } else {
+        throw new Error('Failed to generate PDF');
+      }
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      alert('Failed to generate PDF. Please try again.');
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7,10 12,15 17,10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Download PDF
+      `;
+      button.disabled = false;
+    }
   }
   
   function appendSources(sources) {

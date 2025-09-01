@@ -430,11 +430,11 @@ async def upload_files(
     preloaded_files = []
     for uf in files:
         raw = await uf.read()
-        if len(raw) > max_mb * 1024 * 1024:
-            raise HTTPException(400, detail=f"{uf.filename} exceeds {max_mb} MB limit")
-        # Apply rename if present
-        eff_name = rename_dict.get(uf.filename, uf.filename)
-        preloaded_files.append((eff_name, raw))
+    if len(raw) > max_mb * 1024 * 1024:
+        raise HTTPException(400, detail=f"{uf.filename} exceeds {max_mb} MB limit")
+    # Apply rename if present
+    eff_name = rename_dict.get(uf.filename, uf.filename)
+    preloaded_files.append((eff_name, raw))
 
     # Initialize job status
     app.state.jobs[job_id] = {
@@ -473,7 +473,7 @@ async def upload_files(
                                 cap = captioner.caption_image(im)
                                 caps.append(cap)
                             except Exception as e:
-                                logger.warning(f"[{job_id}] Caption error in {fname}: {e}")
+                                    logger.warning(f"[{job_id}] Caption error in {fname}: {e}")
                         captions.append(caps)
                 else:
                     captions = [[] for _ in pages]
@@ -713,6 +713,36 @@ async def generate_report(
     return ReportResponse(filename=eff_name, report_markdown=report_md, sources=sources_meta)
 
 
+@app.post("/report/pdf")
+async def generate_report_pdf(
+    user_id: str = Form(...),
+    project_id: str = Form(...),
+    report_content: str = Form(...)
+):
+    """
+    Generate a PDF from report content using the PDF utility module
+    """
+    from utils.pdf import generate_report_pdf as generate_pdf
+    from fastapi.responses import Response
+    
+    try:
+        pdf_content = await generate_pdf(report_content, user_id, project_id)
+        
+        # Return PDF as response
+        return Response(
+            content=pdf_content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=report-{datetime.now().strftime('%Y-%m-%d')}.pdf"}
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"[PDF] Unexpected error in PDF endpoint: {e}")
+        raise HTTPException(500, detail=f"Failed to generate PDF: {str(e)}")
+
+
 @app.post("/chat", response_model=ChatAnswerResponse)
 async def chat(
     user_id: str = Form(...), 
@@ -775,7 +805,7 @@ async def _chat_impl(
             match = next((f["filename"] for f in files_ci if f.get("filename", "").lower() == fn.lower()), None)
             if match:
                 doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=match)
-                if doc:
+        if doc:
                     return ChatAnswerResponse(
                         answer=doc.get("summary", ""),
                         sources=[{"filename": match, "file_summary": True}]
@@ -935,7 +965,7 @@ async def _chat_impl(
         fsum_map = {f["filename"]: f.get("summary","") for f in files_list}
         lines = [f"[{fn}] {fsum_map.get(fn, '')}" for fn in relevant_files]
         file_summary_block = "\n".join(lines)
-        
+
     # Guardrail instruction to avoid hallucination
     system_prompt = (
         "You are a careful study assistant. Answer strictly using the given CONTEXT.\n"

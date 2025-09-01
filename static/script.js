@@ -17,7 +17,7 @@
   const reportLink = document.getElementById('report-link');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingMessage = document.getElementById('loading-message');
-
+  
   // State
   let selectedFiles = [];
   let isUploading = false;
@@ -709,13 +709,36 @@
     const textSpan = button.querySelector('.btn-text');
     const loadingSpan = button.querySelector('.btn-loading');
     
+    // Handle buttons with only loading state (like send button)
+    if (!textSpan && loadingSpan) {
+      if (isLoading) {
+        loadingSpan.style.display = 'inline-flex';
+        button.disabled = true;
+      } else {
+        loadingSpan.style.display = 'none';
+        button.disabled = false;
+      }
+      return;
+    }
+    
+    // Handle buttons with both text and loading states (like upload button)
+    if (textSpan && loadingSpan) {
+      if (isLoading) {
+        textSpan.style.display = 'none';
+        loadingSpan.style.display = 'inline-flex';
+        button.disabled = true;
+      } else {
+        textSpan.style.display = 'inline';
+        loadingSpan.style.display = 'none';
+        button.disabled = false;
+      }
+      return;
+    }
+    
+    // Fallback for buttons without proper loading structure
     if (isLoading) {
-      textSpan.style.display = 'none';
-      loadingSpan.style.display = 'inline-flex';
       button.disabled = true;
     } else {
-      textSpan.style.display = 'inline';
-      loadingSpan.style.display = 'none';
       button.disabled = false;
     }
   }

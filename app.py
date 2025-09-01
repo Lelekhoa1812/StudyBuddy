@@ -5,6 +5,10 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 import asyncio
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -1054,3 +1058,7 @@ async def rag_status():
             "rag_available": False,
             "error": str(e)
         }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

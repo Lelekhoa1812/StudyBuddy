@@ -113,13 +113,6 @@ async def related_recent_and_semantic_context(user_id: str, question: str, memor
         numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
         user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' lines concatenated."
         key = None  # We'll let robust_post_json handle rotation via rotator param
-        # Use the same nvidia rotator mechanism via a fake call; we'll reconstruct in app with the real rotator passed through
-        # Here, we expect the caller to monkey-patch the chat with rotator; to keep it simple, we'll do a tiny trick:
-        # The real API call occurs in app with rotator. For here, we return empty and let app request do it. (But to keep module self-contained, we do call with rotator when provided.)
-    # However, since this function is called from app and gets the rotator, we'll move NVIDIA call out of here to avoid circular deps.
-
-    # We'll implement a pure semantic search for rest17 here; recent related will be handled in app using the same prompt.
-
     # Semantic over rest17
     sem_text = ""
     if rest17:

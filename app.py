@@ -106,11 +106,11 @@ embedder = EmbeddingClient(model_name=os.getenv("EMBED_MODEL", "sentence-transfo
 
 # Mongo / RAG store
 try:
-rag = RAGStore(mongo_uri=os.getenv("MONGO_URI"), db_name=os.getenv("MONGO_DB", "studybuddy"))
+    rag = RAGStore(mongo_uri=os.getenv("MONGO_URI"), db_name=os.getenv("MONGO_DB", "studybuddy"))
     # Test the connection
     rag.client.admin.command('ping')
     logger.info("[APP] MongoDB connection successful")
-ensure_indexes(rag)
+    ensure_indexes(rag)
     logger.info("[APP] MongoDB indexes ensured")
 except Exception as e:
     logger.error(f"[APP] Failed to initialize MongoDB/RAG store: {str(e)}")
@@ -428,8 +428,8 @@ async def upload_files(
         pass
 
     preloaded_files = []
-        for uf in files:
-            raw = await uf.read()
+    for uf in files:
+        raw = await uf.read()
         if len(raw) > max_mb * 1024 * 1024:
             raise HTTPException(400, detail=f"{uf.filename} exceeds {max_mb} MB limit")
         # Apply rename if present
@@ -460,42 +460,42 @@ async def upload_files(
                 logger.info(f"[{job_id}] ({idx}/{len(preloaded_files)}) Parsing {fname} ({len(raw)} bytes)")
 
                 # Extract pages from file
-            pages = _extract_pages(fname, raw)
+                pages = _extract_pages(fname, raw)
 
-            # Caption images per page (if any)
-            num_imgs = sum(len(p.get("images", [])) for p in pages)
-            captions = []
-            if num_imgs > 0:
-                for p in pages:
-                    caps = []
-                    for im in p.get("images", []):
-                        try:
-                            cap = captioner.caption_image(im)
-                            caps.append(cap)
-                        except Exception as e:
+                # Caption images per page (if any)
+                num_imgs = sum(len(p.get("images", [])) for p in pages)
+                captions = []
+                if num_imgs > 0:
+                    for p in pages:
+                        caps = []
+                        for im in p.get("images", []):
+                            try:
+                                cap = captioner.caption_image(im)
+                                caps.append(cap)
+                            except Exception as e:
                                 logger.warning(f"[{job_id}] Caption error in {fname}: {e}")
-                    captions.append(caps)
-            else:
-                captions = [[] for _ in pages]
+                        captions.append(caps)
+                else:
+                    captions = [[] for _ in pages]
 
-            # Merge captions into text
+                # Merge captions into text
                 for p, caps in zip(pages, captions):
                     if caps:
                         p["text"] = (p.get("text", "") + "\n\n" + "\n".join([f"[Image] {c}" for c in caps])).strip()
 
-            # Build cards
+                # Build cards
                 cards = await build_cards_from_pages(pages, filename=fname, user_id=user_id, project_id=project_id)
-            logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
+                logger.info(f"[{job_id}] Built {len(cards)} cards for {fname}")
 
-            # Embed & store
-            embeddings = embedder.embed([c["content"] for c in cards])
-            for c, vec in zip(cards, embeddings):
-                c["embedding"] = vec
+                # Embed & store
+                embeddings = embedder.embed([c["content"] for c in cards])
+                for c, vec in zip(cards, embeddings):
+                    c["embedding"] = vec
 
-            rag.store_cards(cards)
+                rag.store_cards(cards)
 
-            # File-level summary (cheap extractive)
-            full_text = "\n\n".join(p.get("text", "") for p in pages)
+                # File-level summary (cheap extractive)
+                full_text = "\n\n".join(p.get("text", "") for p in pages)
                 file_summary = await cheap_summarize(full_text, max_sentences=6)
                 rag.upsert_file_summary(user_id=user_id, project_id=project_id, filename=fname, summary=file_summary)
                 logger.info(f"[{job_id}] Completed {fname}")
@@ -775,7 +775,7 @@ async def _chat_impl(
             match = next((f["filename"] for f in files_ci if f.get("filename", "").lower() == fn.lower()), None)
             if match:
                 doc = rag.get_file_summary(user_id=user_id, project_id=project_id, filename=match)
-        if doc:
+                if doc:
                     return ChatAnswerResponse(
                         answer=doc.get("summary", ""),
                         sources=[{"filename": match, "file_summary": True}]
@@ -935,7 +935,7 @@ async def _chat_impl(
         fsum_map = {f["filename"]: f.get("summary","") for f in files_list}
         lines = [f"[{fn}] {fsum_map.get(fn, '')}" for fn in relevant_files]
         file_summary_block = "\n".join(lines)
-
+        
     # Guardrail instruction to avoid hallucination
     system_prompt = (
         "You are a careful study assistant. Answer strictly using the given CONTEXT.\n"

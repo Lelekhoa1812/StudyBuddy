@@ -62,12 +62,22 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                 i += 1
             
             if code_lines:
-                from reportlab.platypus import Preformatted, Paragraph
-                code_text = '\n'.join(code_lines)
-                # Add a small language header, then render raw code in a preformatted block to avoid parser errors
-                lang_header = f"<font color='#666666' size='8'>[{language.upper()}]</font>"
+                from reportlab.platypus import XPreformatted, Paragraph
+                # Join and sanitize code content: expand tabs, remove control chars that render as squares
+                raw_code = '\n'.join(code_lines)
+                raw_code = raw_code.replace('\t', '    ')
+                raw_code = raw_code.replace('\r\n', '\n').replace('\r', '\n')
+                # Strip non-printable except tab/newline
+                raw_code = re.sub(r'[^\x09\x0A\x20-\x7E]', '', raw_code)
+
+                # Escape for XML and apply lightweight syntax highlighting
+                escaped = raw_code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                highlighted = _apply_syntax_highlight(escaped, language)
+
+                # Add a small language header, then render highlighted code with XPreformatted to preserve spacing
+                lang_header = f"<font color='#9aa5b1' size='8'>[{language.upper()}]</font>"
                 story.append(Paragraph(lang_header, code_style))
-                story.append(Preformatted(code_text, code_style))
+                story.append(XPreformatted(highlighted, code_style))
         
         # Lists (including nested)
         elif line.startswith('- ') or line.startswith('* '):
@@ -439,6 +449,60 @@ def _format_inline_markdown(text: str) -> str:
     return text
 
 
+def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
+    """
+    Apply lightweight syntax highlighting on XML-escaped code text.
+    Works with escaped entities (&lt; &gt; &amp;), so regexes should not rely on raw quotes.
+    """
+    # Generic number highlighting
+    out = re.sub(r"\b(\d+\.?\d*)\b", r"<font color='#d19a66'>\1</font>", escaped_code)
+
+    lang = (language or 'text').lower()
+
+    if lang in ('python', 'py'):
+        keywords = (
+            'def|class|if|else|elif|for|while|try|except|finally|import|from|as|with|return|yield|lambda|and|or|not|in|is|True|False|None|pass|break|continue|raise|assert'
+        )
+        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
+        # Comments starting with # to end of line
+        out = re.sub(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+
+    elif lang in ('javascript', 'js', 'typescript', 'ts'):
+        keywords = (
+            'function|var|let|const|if|else|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|new|this|typeof|instanceof|true|false|null|undefined|async|await'
+        )
+        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
+        # Line comments
+        out = re.sub(r"(//[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        # Block comments (escaped form still contains /* */)
+        out = re.sub(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#5c6370'>{m.group(0)}</font>", out)
+
+    elif lang in ('json'):
+        # true|false|null
+        out = re.sub(r"\b(true|false|null)\b", r"<font color='#56b6c2'><b>\1</b></font>", out)
+        # Keys "key": stay as &quot;key&quot; after escaping; highlight inside quotes followed by :
+        out = re.sub(r"(&quot;[^&]*?&quot;)(\s*:)", r"<font color='#61afef'>\1</font>\2", out)
+
+    elif lang in ('bash', 'sh', 'shell'):
+        out = re.sub(r"(^|\n)(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)", r"\1\2<font color='#c678dd'><b>\3</b></font>", out)
+        out = re.sub(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+
+    elif lang in ('yaml', 'yml'):
+        out = re.sub(r"(^|\n)(\s*)([^:\n]+)(:)", r"\1\2<font color='#61afef'>\3</font>\4", out)
+        out = re.sub(r"\b(true|false|yes|no|on|off)\b", r"<font color='#56b6c2'><b>\1</b></font>", out, flags=re.IGNORECASE)
+
+    elif lang in ('sql'):
+        keywords = (
+            'SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|DATABASE|SCHEMA|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|UNION|DISTINCT|COUNT|SUM|AVG|MAX|MIN|AND|OR|NOT|IN|BETWEEN|LIKE|IS|NULL|ASC|DESC|LIMIT|OFFSET'
+        )
+        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out, flags=re.IGNORECASE)
+
+    # Strings: handle common forms using escaped quotes &quot; and &#x27;
+    out = re.sub(r"(&quot;.*?&quot;)", r"<font color='#98c379'>\1</font>", out)
+    out = re.sub(r"(&#x27;.*?&#x27;)", r"<font color='#98c379'>\1</font>", out)
+
+    return out
+
 async def generate_report_pdf(report_content: str, user_id: str, project_id: str) -> bytes:
     """
     Generate a PDF from report content using reportlab
@@ -532,8 +596,9 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
             parent=styles['Code'],
             fontSize=9,
             fontName='Courier',
-            backColor=colors.HexColor('#f8f9fa'),
-            borderColor=colors.HexColor('#dee2e6'),
+            textColor=colors.HexColor('#d4d4d4'),
+            backColor=colors.HexColor('#1e1e1e'),
+            borderColor=colors.HexColor('#2d2d2d'),
             borderWidth=1,
             borderPadding=8,
             leftIndent=12,

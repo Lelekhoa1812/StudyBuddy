@@ -2,8 +2,7 @@
 import os
 from typing import List
 import numpy as np
-import logging
-from .logger import get_logger
+from ..logger import get_logger
 
 try:
     from sentence_transformers import SentenceTransformer

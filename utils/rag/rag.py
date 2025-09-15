@@ -7,7 +7,7 @@ from pymongo.collection import Collection
 from pymongo.errors import PyMongoError
 import numpy as np
 import logging
-from .logger import get_logger
+from ..logger import get_logger
 
 VECTOR_DIM = 384  # all-MiniLM-L6-v2
 INDEX_NAME = os.getenv("MONGO_VECTOR_INDEX", "vector_index")

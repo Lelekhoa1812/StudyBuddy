@@ -19,7 +19,7 @@ from pymongo.errors import PyMongoError, ConnectionFailure, ServerSelectionTimeo
 
 from utils.api.rotator import APIKeyRotator
 from utils.ingestion.parser import parse_pdf_bytes, parse_docx_bytes
-from utils.caption import BlipCaptioner
+from utils.ingestion.caption import BlipCaptioner
 from utils.ingestion.chunker import build_cards_from_pages
 from utils.rag.embeddings import EmbeddingClient
 from utils.rag.rag import RAGStore, ensure_indexes

@@ -4,7 +4,7 @@ import fitz  # PyMuPDF
 from docx import Document
 from PIL import Image
 import numpy as np
-from utils.logger import get_logger
+from ..logger import get_logger
 
 logger = get_logger("PARSER", __name__)
 

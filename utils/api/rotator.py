@@ -1,8 +1,7 @@
 # ────────────────────────────── utils/rotator.py ──────────────────────────────
 import os
 import itertools
-import logging
-from .logger import get_logger
+from ..logger import get_logger
 from typing import Optional
 
 import httpx

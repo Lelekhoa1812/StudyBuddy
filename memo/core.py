@@ -128,15 +128,16 @@ class MemorySystem:
     
     async def get_conversation_context(self, user_id: str, question: str,
                                      project_id: Optional[str] = None) -> Tuple[str, str]:
-        """Get conversation context for chat continuity"""
+        """Get conversation context for chat continuity with enhanced memory ability"""
         try:
             if self.enhanced_available:
-                # Use enhanced context retrieval
+                # Use enhanced context retrieval with better integration
                 recent_context, semantic_context = await self._get_enhanced_context(user_id, question)
                 return recent_context, semantic_context
             else:
-                # Fallback to legacy context
-                return "", ""
+                # Use legacy context with enhanced semantic selection
+                from memo.context import get_legacy_context
+                return await get_legacy_context(user_id, question, self, self.embedder, 3)
         except Exception as e:
             logger.error(f"[CORE_MEMORY] Failed to get conversation context: {e}")
             return "", ""
@@ -172,6 +173,35 @@ class MemorySystem:
                 "system_type": "legacy",
                 "enhanced_available": False
             }
+    
+    async def get_smart_context(self, user_id: str, question: str, 
+                              nvidia_rotator=None, project_id: Optional[str] = None) -> Tuple[str, str]:
+        """Get smart context using both NVIDIA and semantic similarity for optimal memory ability"""
+        try:
+            if self.enhanced_available:
+                # Use enhanced context with NVIDIA integration if available
+                recent_context, semantic_context = await self._get_enhanced_context(user_id, question)
+                
+                # If NVIDIA rotator is available, enhance recent context selection
+                if nvidia_rotator and recent_context:
+                    try:
+                        from memo.nvidia import related_recent_context
+                        recent_memories = self.legacy_memory.recent(user_id, 5)
+                        if recent_memories:
+                            nvidia_recent = await related_recent_context(question, recent_memories, nvidia_rotator)
+                            if nvidia_recent:
+                                recent_context = nvidia_recent
+                    except Exception as e:
+                        logger.warning(f"[CORE_MEMORY] NVIDIA context enhancement failed: {e}")
+                
+                return recent_context, semantic_context
+            else:
+                # Use legacy context with NVIDIA enhancement if available
+                from memo.context import get_legacy_context
+                return await get_legacy_context(user_id, question, self, self.embedder, 3)
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to get smart context: {e}")
+            return "", ""
     
     # ────────────────────────────── Private Helper Methods ──────────────────────────────
     

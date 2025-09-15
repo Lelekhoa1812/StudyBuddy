@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from utils.logger import get_logger
 from memo.nvidia import summarize_qa, files_relevance, related_recent_context
-from memo.context import semantic_context
+from memo.context import semantic_context, get_legacy_context
 from utils.embeddings import EmbeddingClient
 
 logger = get_logger("HISTORY_MANAGER", __name__)
@@ -33,7 +33,7 @@ class HistoryManager:
     
     async def related_recent_and_semantic_context(self, user_id: str, question: str, 
                                                 embedder: EmbeddingClient, 
-                                                topk_sem: int = 3) -> Tuple[str, str]:
+                                                topk_sem: int = 3, nvidia_rotator=None) -> Tuple[str, str]:
         """Get related recent and semantic context (enhanced version)"""
         try:
             if self.memory_system and self.memory_system.is_enhanced_available():
@@ -43,14 +43,14 @@ class HistoryManager:
                 )
                 return recent_context, semantic_context
             else:
-                # Fallback to original implementation
-                return await get_legacy_context(user_id, question, self.memory_system, embedder, topk_sem)
+                # Fallback to original implementation with NVIDIA support
+                return await self._get_legacy_context(user_id, question, self.memory_system, embedder, topk_sem, nvidia_rotator)
         except Exception as e:
             logger.error(f"[HISTORY_MANAGER] Context retrieval failed: {e}")
             return "", ""
     
     async def _get_legacy_context(self, user_id: str, question: str, memory_system, 
-                                embedder: EmbeddingClient, topk_sem: int) -> Tuple[str, str]:
+                                embedder: EmbeddingClient, topk_sem: int, nvidia_rotator=None) -> Tuple[str, str]:
         """Get context using legacy method with enhanced semantic selection"""
         if not memory_system:
             return "", ""
@@ -61,15 +61,22 @@ class HistoryManager:
         recent_text = ""
         if recent3:
             # Use NVIDIA to select most relevant recent memories (enhanced)
-            try:
-                recent_text = await related_recent_context(question, recent3, None)  # rotator will be passed by caller
-            except Exception as e:
-                logger.warning(f"[HISTORY_MANAGER] Recent context selection failed: {e}")
-                # Fallback to semantic similarity
+            if nvidia_rotator:
+                try:
+                    recent_text = await related_recent_context(question, recent3, nvidia_rotator)
+                except Exception as e:
+                    logger.warning(f"[HISTORY_MANAGER] NVIDIA recent context selection failed: {e}")
+                    # Fallback to semantic similarity
+                    try:
+                        recent_text = await semantic_context(question, recent3, embedder, 2)
+                    except Exception as e2:
+                        logger.warning(f"[HISTORY_MANAGER] Semantic fallback failed: {e2}")
+            else:
+                # Use semantic similarity directly if no NVIDIA rotator
                 try:
                     recent_text = await semantic_context(question, recent3, embedder, 2)
-                except Exception as e2:
-                    logger.warning(f"[HISTORY_MANAGER] Semantic fallback failed: {e2}")
+                except Exception as e:
+                    logger.warning(f"[HISTORY_MANAGER] Semantic recent context failed: {e}")
         
         sem_text = ""
         if rest17:
@@ -87,11 +94,11 @@ async def files_relevance(question: str, file_summaries: List[Dict[str, str]], r
     """Legacy function - use HistoryManager.files_relevance() instead"""
     return await files_relevance(question, file_summaries, rotator)
 
-async def related_recent_and_semantic_context(user_id: str, question: str, memory, embedder: EmbeddingClient, topk_sem: int = 3) -> Tuple[str, str]:
+async def related_recent_and_semantic_context(user_id: str, question: str, memory, embedder: EmbeddingClient, topk_sem: int = 3, nvidia_rotator=None) -> Tuple[str, str]:
     """Legacy function - use HistoryManager.related_recent_and_semantic_context() instead"""
     # Create a temporary history manager for legacy compatibility
     history_manager = HistoryManager(memory)
-    return await history_manager.related_recent_and_semantic_context(user_id, question, embedder, topk_sem)
+    return await history_manager.related_recent_and_semantic_context(user_id, question, embedder, topk_sem, nvidia_rotator)
 
 # ────────────────────────────── Global Instance ──────────────────────────────
 

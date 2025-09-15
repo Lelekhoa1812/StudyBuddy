@@ -18,10 +18,6 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     denom = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
     return float(np.dot(a, b) / denom)
 
-def as_text(block: str) -> str:
-    """Convert block to text"""
-    return block.strip()
-
 async def semantic_context(question: str, memories: List[str], embedder: EmbeddingClient, topk: int = 3) -> str:
     """
     Get semantic context from memories using cosine similarity.
@@ -31,7 +27,7 @@ async def semantic_context(question: str, memories: List[str], embedder: Embeddi
     
     try:
         qv = np.array(embedder.embed([question])[0], dtype="float32")
-        mats = embedder.embed([as_text(s) for s in memories])
+        mats = embedder.embed([s.strip() for s in memories])
         sims = [(cosine_similarity(qv, np.array(v, dtype="float32")), s) for v, s in zip(mats, memories)]
         sims.sort(key=lambda x: x[0], reverse=True)
         top = [s for (sc, s) in sims[:topk] if sc > 0.15]  # small threshold

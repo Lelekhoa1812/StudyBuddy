@@ -50,6 +50,11 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
         elif line.startswith('```'):
             # Extract language if specified
             language = line[3:].strip() if len(line) > 3 else 'text'
+            
+            # Auto-detect language if not specified
+            if language == 'text':
+                language = _detect_language_from_content(lines, i)
+            
             code_lines = []
             i += 1
             while i < len(lines) and not lines[i].strip().startswith('```'):
@@ -131,6 +136,73 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
         i += 1
     
     return story
+
+
+def _detect_language_from_content(lines: list, start_index: int) -> str:
+    """
+    Auto-detect programming language from code content
+    """
+    # Look at the next few lines to detect language
+    sample_lines = []
+    for i in range(start_index + 1, min(start_index + 10, len(lines))):
+        if lines[i].strip().startswith('```'):
+            break
+        sample_lines.append(lines[i])
+    
+    sample_text = '\n'.join(sample_lines)
+    
+    # Python detection
+    if (re.search(r'\bdef\s+\w+', sample_text) or 
+        re.search(r'\bclass\s+\w+', sample_text) or
+        re.search(r'\bimport\s+\w+', sample_text) or
+        re.search(r'\bfrom\s+\w+', sample_text)):
+        return 'python'
+    
+    # JavaScript detection
+    if (re.search(r'\bfunction\s+\w+', sample_text) or
+        re.search(r'\bvar\s+\w+', sample_text) or
+        re.search(r'\blet\s+\w+', sample_text) or
+        re.search(r'\bconst\s+\w+', sample_text) or
+        re.search(r'=>', sample_text)):
+        return 'javascript'
+    
+    # Java detection
+    if (re.search(r'\bpublic\s+class', sample_text) or
+        re.search(r'\bprivate\s+\w+', sample_text) or
+        re.search(r'\bSystem\.out\.print', sample_text) or
+        re.search(r'\bimport\s+java\.', sample_text)):
+        return 'java'
+    
+    # JSON detection
+    if (re.search(r'^\s*[{}]', sample_text) or
+        re.search(r'"[^"]*"\s*:', sample_text) or
+        re.search(r'\btrue\b|\bfalse\b|\bnull\b', sample_text)):
+        return 'json'
+    
+    # XML/HTML detection
+    if (re.search(r'<[^>]+>', sample_text) or
+        re.search(r'&lt;[^&gt;]+&gt;', sample_text)):
+        return 'xml'
+    
+    # SQL detection
+    if (re.search(r'\bSELECT\b', sample_text, re.IGNORECASE) or
+        re.search(r'\bFROM\b', sample_text, re.IGNORECASE) or
+        re.search(r'\bWHERE\b', sample_text, re.IGNORECASE) or
+        re.search(r'\bINSERT\b', sample_text, re.IGNORECASE)):
+        return 'sql'
+    
+    # YAML detection
+    if (re.search(r'^\s*\w+:', sample_text) or
+        re.search(r'^\s*-\s+', sample_text)):
+        return 'yaml'
+    
+    # Bash detection
+    if (re.search(r'^\s*#!', sample_text) or
+        re.search(r'\$\w+', sample_text) or
+        re.search(r'^\s*\w+.*\|', sample_text)):
+        return 'bash'
+    
+    return 'text'
 
 
 def _format_code_block(code_text: str, language: str) -> str:
@@ -487,9 +559,12 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
             backColor=colors.HexColor('#f8f9fa'),
             borderColor=colors.HexColor('#dee2e6'),
             borderWidth=1,
-            borderPadding=5,
-            leftIndent=10,
-            rightIndent=10
+            borderPadding=8,
+            leftIndent=12,
+            rightIndent=12,
+            spaceBefore=6,
+            spaceAfter=6,
+            leading=11
         )
         
         # Parse markdown content

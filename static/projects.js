@@ -279,6 +279,11 @@
         messages.forEach(msg => {
           if (typeof window.appendMessage === 'function') {
             window.appendMessage(msg.role, msg.content);
+            if (msg.role === 'assistant' && Array.isArray(msg.sources) && msg.sources.length) {
+              if (typeof window.appendSources === 'function') {
+                window.appendSources(msg.sources);
+              }
+            }
           } else {
             // Fallback if not yet defined
             const messagesContainer = document.getElementById('messages');
@@ -286,6 +291,13 @@
             messageDiv.className = `msg ${msg.role}`;
             messageDiv.textContent = msg.content;
             messagesContainer.appendChild(messageDiv);
+            // Minimal fallback for sources
+            if (msg.role === 'assistant' && Array.isArray(msg.sources) && msg.sources.length) {
+              const srcDiv = document.createElement('div');
+              srcDiv.className = 'sources';
+              srcDiv.textContent = 'Sources: ' + msg.sources.map(s => s.filename).join(', ');
+              messagesContainer.appendChild(srcDiv);
+            }
           }
         });
         

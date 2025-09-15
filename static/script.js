@@ -532,8 +532,16 @@
         if (response.ok) {
           thinkingMsg.remove();
           appendMessage('assistant', data.answer || 'No answer received');
-          await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.answer || 'No answer received');
-          if (data.sources && data.sources.length > 0) appendSources(data.sources);
+          if (data.sources && data.sources.length > 0) {
+            appendSources(data.sources);
+          }
+          await saveChatMessage(
+            user.user_id,
+            currentProject.project_id,
+            'assistant',
+            data.answer || 'No answer received',
+            (data.sources && data.sources.length > 0) ? data.sources : null
+          );
         } else {
           throw new Error(data.detail || 'Failed to get answer');
         }
@@ -641,7 +649,7 @@
     }
   });
 
-  async function saveChatMessage(userId, projectId, role, content) {
+  async function saveChatMessage(userId, projectId, role, content, sources = null) {
     try {
       const formData = new FormData();
       formData.append('user_id', userId);
@@ -649,6 +657,9 @@
       formData.append('role', role);
       formData.append('content', content);
       formData.append('timestamp', Date.now() / 1000);
+      if (sources) {
+        try { formData.append('sources', JSON.stringify(sources)); } catch {}
+      }
       
       await fetch('/chat/save', { method: 'POST', body: formData });
     } catch (error) {
@@ -691,6 +702,10 @@
     
     return messageDiv;
   }
+
+  // Expose markdown-aware appenders for use after refresh (projects.js)
+  window.appendMessage = appendMessage;
+  window.appendSources = appendSources;
 
   function addCopyButtonsToCodeBlocks(messageDiv) {
     const codeBlocks = messageDiv.querySelectorAll('pre code');

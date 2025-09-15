@@ -48,6 +48,7 @@ class ChatMessageResponse(BaseModel):
     content: str
     timestamp: float
     created_at: str
+    sources: Optional[List[Dict[str, Any]]] = None
 
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
@@ -298,19 +299,31 @@ async def save_chat_message(
     project_id: str = Form(...),
     role: str = Form(...),
     content: str = Form(...),
-    timestamp: Optional[float] = Form(None)
+    timestamp: Optional[float] = Form(None),
+    sources: Optional[str] = Form(None)
 ):
     """Save a chat message to the session"""
     if role not in ["user", "assistant"]:
         raise HTTPException(400, detail="Invalid role")
     
+    # Parse optional sources JSON
+    parsed_sources: Optional[List[Dict[str, Any]]] = None
+    if sources:
+        try:
+            parsed = json.loads(sources)
+            if isinstance(parsed, list):
+                parsed_sources = parsed
+        except Exception:
+            parsed_sources = None
+
     message = {
         "user_id": user_id,
         "project_id": project_id,
         "role": role,
         "content": content,
         "timestamp": timestamp or time.time(),
-        "created_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(timezone.utc),
+        **({"sources": parsed_sources} if parsed_sources is not None else {})
     }
     
     rag.db["chat_sessions"].insert_one(message)
@@ -332,7 +345,8 @@ async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
             role=message["role"],
             content=message["content"],
             timestamp=message["timestamp"],
-            created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"])
+            created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"]),
+            sources=message.get("sources")
         ))
     
     return ChatHistoryResponse(messages=messages)

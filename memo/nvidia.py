@@ -104,6 +104,7 @@ async def files_relevance(question: str, file_summaries: List[Dict[str, str]], r
 async def related_recent_context(question: str, recent_memories: List[str], rotator) -> str:
     """
     Use NVIDIA to select related items from recent memories.
+    Enhanced function for better context memory ability.
     """
     if not recent_memories:
         return ""

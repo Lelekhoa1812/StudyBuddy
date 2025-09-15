@@ -44,6 +44,7 @@ async def get_conversation_context(user_id: str, question: str, memory_system,
                                  embedder: EmbeddingClient, topk_sem: int = 3) -> Tuple[str, str]:
     """
     Get both recent and semantic context for conversation continuity.
+    Enhanced version that uses semantic similarity for better context selection.
     """
     try:
         if memory_system and memory_system.is_enhanced_available():
@@ -53,7 +54,7 @@ async def get_conversation_context(user_id: str, question: str, memory_system,
             )
             return recent_context, semantic_context
         else:
-            # Fallback to legacy context
+            # Fallback to legacy context with enhanced semantic selection
             return await get_legacy_context(user_id, question, memory_system, embedder, topk_sem)
     except Exception as e:
         logger.error(f"[CONTEXT_MANAGER] Context retrieval failed: {e}")
@@ -61,26 +62,24 @@ async def get_conversation_context(user_id: str, question: str, memory_system,
 
 async def get_legacy_context(user_id: str, question: str, memory_system, 
                            embedder: EmbeddingClient, topk_sem: int) -> Tuple[str, str]:
-    """Get context using legacy method"""
+    """Get context using legacy method with enhanced semantic selection"""
     if not memory_system:
         return "", ""
     
     recent3 = memory_system.recent(user_id, 3)
     rest17 = memory_system.rest(user_id, 3)
     
+    # Use semantic similarity to select most relevant recent memories
     recent_text = ""
     if recent3:
-        # This would need NVIDIA processing in the calling code
-        pass
+        try:
+            recent_text = await semantic_context(question, recent3, embedder, 2)
+        except Exception as e:
+            logger.warning(f"[CONTEXT_MANAGER] Recent context selection failed: {e}")
     
+    # Get semantic context from remaining memories
     sem_text = ""
     if rest17:
-        qv = np.array(embedder.embed([question])[0], dtype="float32")
-        mats = embedder.embed([s.strip() for s in rest17])
-        sims = [(cosine_similarity(qv, np.array(v, dtype="float32")), s) for v, s in zip(mats, rest17)]
-        sims.sort(key=lambda x: x[0], reverse=True)
-        top = [s for (sc, s) in sims[:topk_sem] if sc > 0.15]
-        if top:
-            sem_text = "\n\n".join(top)
+        sem_text = await semantic_context(question, rest17, embedder, topk_sem)
     
     return recent_text, sem_text

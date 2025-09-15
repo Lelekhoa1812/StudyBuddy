@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from utils.logger import get_logger
 from memo.nvidia import summarize_qa, files_relevance, related_recent_context
-from memo.context import get_conversation_context, get_legacy_context, semantic_context
+from memo.context import semantic_context
 from utils.embeddings import EmbeddingClient
 
 logger = get_logger("HISTORY_MANAGER", __name__)
@@ -48,48 +48,50 @@ class HistoryManager:
         except Exception as e:
             logger.error(f"[HISTORY_MANAGER] Context retrieval failed: {e}")
             return "", ""
+    
+    async def _get_legacy_context(self, user_id: str, question: str, memory_system, 
+                                embedder: EmbeddingClient, topk_sem: int) -> Tuple[str, str]:
+        """Get context using legacy method with enhanced semantic selection"""
+        if not memory_system:
+            return "", ""
+        
+        recent3 = memory_system.recent(user_id, 3)
+        rest17 = memory_system.rest(user_id, 3)
+        
+        recent_text = ""
+        if recent3:
+            # Use NVIDIA to select most relevant recent memories (enhanced)
+            try:
+                recent_text = await related_recent_context(question, recent3, None)  # rotator will be passed by caller
+            except Exception as e:
+                logger.warning(f"[HISTORY_MANAGER] Recent context selection failed: {e}")
+                # Fallback to semantic similarity
+                try:
+                    recent_text = await semantic_context(question, recent3, embedder, 2)
+                except Exception as e2:
+                    logger.warning(f"[HISTORY_MANAGER] Semantic fallback failed: {e2}")
+        
+        sem_text = ""
+        if rest17:
+            sem_text = await semantic_context(question, rest17, embedder, topk_sem)
+        
+        return recent_text, sem_text
 
 # ────────────────────────────── Legacy Functions (Backward Compatibility) ──────────────────────────────
 
 async def summarize_qa_with_nvidia(question: str, answer: str, rotator) -> str:
-    """
-    Returns a single line block:
-    q: <concise>\na: <concise>
-    No extra commentary.
-    """
+    """Legacy function - use HistoryManager.summarize_qa_with_nvidia() instead"""
     return await summarize_qa(question, answer, rotator)
 
 async def files_relevance(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
-    """
-    Ask NVIDIA model to mark each file as relevant (true) or not (false) for the question.
-    Returns {filename: bool}
-    """
+    """Legacy function - use HistoryManager.files_relevance() instead"""
     return await files_relevance(question, file_summaries, rotator)
 
 async def related_recent_and_semantic_context(user_id: str, question: str, memory, embedder: EmbeddingClient, topk_sem: int = 3) -> Tuple[str, str]:
-    """
-    Returns (recent_related_text, semantic_related_text).
-    - recent_related_text: NVIDIA checks the last 3 summaries for direct relatedness.
-    - semantic_related_text: cosine-sim search over the remaining 17 summaries (top-k).
-    
-    This function is maintained for backward compatibility.
-    For enhanced features, use the integrated memory system.
-    """
-    recent3 = memory.recent(user_id, 3)
-    rest17 = memory.rest(user_id, 3)
-
-    recent_text = ""
-    if recent3:
-        # This would need NVIDIA processing in the calling code
-        pass
-    
-    # Semantic over rest17
-    sem_text = ""
-    if rest17:
-        sem_text = await semantic_context(question, rest17, embedder, topk_sem)
-    
-    # Return recent empty (to be filled by caller using NVIDIA), and semantic text
-    return ("", sem_text)
+    """Legacy function - use HistoryManager.related_recent_and_semantic_context() instead"""
+    # Create a temporary history manager for legacy compatibility
+    history_manager = HistoryManager(memory)
+    return await history_manager.related_recent_and_semantic_context(user_id, question, embedder, topk_sem)
 
 # ────────────────────────────── Global Instance ──────────────────────────────
 

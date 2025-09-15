@@ -189,7 +189,7 @@ class MemorySystem:
             logger.warning(f"[CORE_MEMORY] Failed to add enhanced memory: {e}")
     
     async def _get_enhanced_context(self, user_id: str, question: str) -> Tuple[str, str]:
-        """Get context from enhanced memory system"""
+        """Get context from enhanced memory system with semantic selection"""
         try:
             # Get recent conversation memories
             recent_memories = self.enhanced_memory.get_memories(
@@ -199,9 +199,17 @@ class MemorySystem:
             )
             
             recent_context = ""
-            if recent_memories:
-                recent_summaries = [m["summary"] for m in recent_memories]
-                recent_context = "\n\n".join(recent_summaries)
+            if recent_memories and self.embedder:
+                # Use semantic similarity to select most relevant recent memories
+                try:
+                    from memo.context import semantic_context
+                    recent_summaries = [m["summary"] for m in recent_memories]
+                    recent_context = await semantic_context(question, recent_summaries, self.embedder, 3)
+                except Exception as e:
+                    logger.warning(f"[CORE_MEMORY] Semantic recent context failed, using all: {e}")
+                    recent_context = "\n\n".join([m["summary"] for m in recent_memories])
+            elif recent_memories:
+                recent_context = "\n\n".join([m["summary"] for m in recent_memories])
             
             # Get semantic context from other memory types
             semantic_memories = self.enhanced_memory.get_memories(
@@ -210,11 +218,22 @@ class MemorySystem:
             )
             
             semantic_context = ""
-            if semantic_memories:
+            if semantic_memories and self.embedder:
+                try:
+                    from memo.context import semantic_context
+                    other_memories = [m for m in semantic_memories if m.get("memory_type") != "conversation"]
+                    if other_memories:
+                        other_summaries = [m["summary"] for m in other_memories]
+                        semantic_context = await semantic_context(question, other_summaries, self.embedder, 5)
+                except Exception as e:
+                    logger.warning(f"[CORE_MEMORY] Semantic context failed, using all: {e}")
+                    other_memories = [m for m in semantic_memories if m.get("memory_type") != "conversation"]
+                    if other_memories:
+                        semantic_context = "\n\n".join([m["summary"] for m in other_memories])
+            elif semantic_memories:
                 other_memories = [m for m in semantic_memories if m.get("memory_type") != "conversation"]
                 if other_memories:
-                    semantic_summaries = [m["summary"] for m in other_memories]
-                    semantic_context = "\n\n".join(semantic_summaries)
+                    semantic_context = "\n\n".join([m["summary"] for m in other_memories])
             
             return recent_context, semantic_context
             

@@ -1,8 +1,8 @@
 import os
 import asyncio
 from typing import List
-from .logger import get_logger
-from utils.rotator import robust_post_json, APIKeyRotator
+from utils.logger import get_logger
+from utils.api.rotator import robust_post_json, APIKeyRotator
 
 logger = get_logger("SUM", __name__)
 

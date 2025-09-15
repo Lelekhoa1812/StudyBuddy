@@ -10,7 +10,7 @@ import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 
 from utils.logger import get_logger
-from utils.embeddings import EmbeddingClient
+from utils.rag.embeddings import EmbeddingClient
 from memo.legacy import MemoryLRU
 from memo.persistent import PersistentMemory
 

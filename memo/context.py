@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Dict, Any, Tuple, Optional
 
 from utils.logger import get_logger
-from utils.embeddings import EmbeddingClient
+from utils.rag.embeddings import EmbeddingClient
 
 logger = get_logger("CONTEXT_MANAGER", __name__)
 

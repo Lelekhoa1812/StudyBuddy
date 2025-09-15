@@ -1,9 +1,9 @@
 # ────────────────────────────── utils/chunker.py ──────────────────────────────
 import re
 from typing import List, Dict, Any
-from .summarizer import cheap_summarize, clean_chunk_text
-from .common import split_sentences, slugify
-from .logger import get_logger
+from utils.service.summarizer import cheap_summarize, clean_chunk_text
+from utils.service.common import split_sentences, slugify
+from utils.logger import get_logger
 
 # Enhanced semantic chunker with overlap and better structure:
 # - Split by headings / numbered sections if present

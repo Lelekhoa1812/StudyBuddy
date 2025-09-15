@@ -2,7 +2,7 @@
 from typing import Optional
 from PIL import Image
 import logging
-from .logger import get_logger
+from utils.logger import get_logger
 
 # Use transformers BLIP base (CPU friendly)
 try:

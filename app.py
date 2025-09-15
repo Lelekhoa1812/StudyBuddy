@@ -17,15 +17,15 @@ from fastapi.middleware.cors import CORSMiddleware
 # MongoDB imports
 from pymongo.errors import PyMongoError, ConnectionFailure, ServerSelectionTimeoutError
 
-from utils.rotator import APIKeyRotator
-from utils.parser import parse_pdf_bytes, parse_docx_bytes
+from utils.api.rotator import APIKeyRotator
+from utils.ingestion.parser import parse_pdf_bytes, parse_docx_bytes
 from utils.caption import BlipCaptioner
-from utils.chunker import build_cards_from_pages
-from utils.embeddings import EmbeddingClient
-from utils.rag import RAGStore, ensure_indexes
-from utils.router import select_model, generate_answer_with_model
-from utils.summarizer import cheap_summarize
-from utils.common import trim_text
+from utils.ingestion.chunker import build_cards_from_pages
+from utils.rag.embeddings import EmbeddingClient
+from utils.rag.rag import RAGStore, ensure_indexes
+from utils.api.router import select_model, generate_answer_with_model
+from utils.service.summarizer import cheap_summarize
+from utils.service.common import trim_text
 from utils.logger import get_logger
 import re
 
@@ -645,7 +645,7 @@ async def generate_report(
     file_summary = doc_sum.get("summary", "")
 
     # Chain-of-thought style two-step with Gemini
-    from utils.router import GEMINI_MED, GEMINI_PRO
+    from utils.api.router import GEMINI_MED, GEMINI_PRO
     
     # Step 1: Content filtering and relevance assessment based on user instructions
     if instructions.strip():
@@ -734,7 +734,7 @@ async def generate_report_pdf(
     """
     Generate a PDF from report content using the PDF utility module
     """
-    from utils.pdf import generate_report_pdf as generate_pdf
+    from utils.service.pdf import generate_report_pdf as generate_pdf
     from fastapi.responses import Response
     
     try:
@@ -775,7 +775,7 @@ Return only the variations, one per line, no numbering or extra text."""
         
         user_prompt = f"Original question: {question}\n\nGenerate query variations:"
         
-        from utils.router import generate_answer_with_model
+        from utils.api.router import generate_answer_with_model
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
         
@@ -866,7 +866,7 @@ async def _chat_impl(
     """
     import sys
     from memo.core import get_memory_system
-    from utils.router import NVIDIA_SMALL  # reuse default name
+    from utils.api.router import NVIDIA_SMALL  # reuse default name
     memory = get_memory_system()
     logger.info("[CHAT] User Q/chat: %s", trim_text(question, 15).replace("\n", " "))
 
@@ -956,7 +956,7 @@ async def _chat_impl(
             numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
             user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' values concatenated."
             try:
-                from utils.rotator import robust_post_json
+                from utils.api.rotator import robust_post_json
                 key = nvidia_rotator.get_key()
                 url = "https://integrate.api.nvidia.com/v1/chat/completions"
                 payload = {

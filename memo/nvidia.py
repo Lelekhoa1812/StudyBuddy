@@ -10,7 +10,7 @@ import json
 from typing import List, Dict, Any
 
 from utils.logger import get_logger
-from utils.rotator import robust_post_json
+from utils.api.rotator import robust_post_json
 
 logger = get_logger("NVIDIA_INTEGRATION", __name__)
 

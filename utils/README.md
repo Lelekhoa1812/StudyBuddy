@@ -102,8 +102,8 @@ Core utilities for the EdSummariser RAG system providing document processing, re
 
 ```python
 # Basic RAG usage
-from utils.rag import RAGStore
-from utils.embeddings import EmbeddingClient
+from utils.rag.rag import RAGStore
+from utils.rag.embeddings import EmbeddingClient
 
 rag = RAGStore(mongo_uri, db_name)
 embedder = EmbeddingClient()

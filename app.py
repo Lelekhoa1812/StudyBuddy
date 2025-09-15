@@ -344,12 +344,12 @@ async def delete_chat_history(user_id: str, project_id: str):
         logger.info(f"[CHAT] Cleared history for user {user_id} project {project_id}")
         # Also clear in-memory LRU for this user to avoid stale context
         try:
-            from memo.memory import MemoryLRU
-            memory = app.state.__dict__.setdefault("memory_lru", MemoryLRU())
+            from memo.core import get_memory_system
+            memory = get_memory_system()
             memory.clear(user_id)
-            logger.info(f"[CHAT] Cleared in-memory LRU for user {user_id}")
+            logger.info(f"[CHAT] Cleared memory for user {user_id}")
         except Exception as me:
-            logger.warning(f"[CHAT] Failed to clear in-memory LRU for user {user_id}: {me}")
+            logger.warning(f"[CHAT] Failed to clear memory for user {user_id}: {me}")
         return MessageResponse(message="Chat history cleared")
     except Exception as e:
         raise HTTPException(500, detail=f"Failed to clear chat history: {str(e)}")
@@ -776,10 +776,9 @@ async def _chat_impl(
     - After answering, summarize (q,a) via NVIDIA and store into LRU (last 20)
     """
     import sys
-    from memo.memory import MemoryLRU
-    from memo.history import summarize_qa_with_nvidia, files_relevance, related_recent_and_semantic_context
+    from memo.core import get_memory_system
     from utils.router import NVIDIA_SMALL  # reuse default name
-    memory = app.state.__dict__.setdefault("memory_lru", MemoryLRU())
+    memory = get_memory_system()
     logger.info("[CHAT] User Q/chat: %s", trim_text(question, 15).replace("\n", " "))
 
     # 0) Detect any filenames mentioned in the question (e.g., JADE.pdf)
@@ -834,7 +833,9 @@ async def _chat_impl(
 
     # 1b) Ask NVIDIA to mark relevance per file
     try:
-        relevant_map = await files_relevance(question, files_list, nvidia_rotator)
+        from memo.history import get_history_manager
+        history_manager = get_history_manager(memory)
+        relevant_map = await history_manager.files_relevance(question, files_list, nvidia_rotator)
         relevant_files = [fn for fn, ok in relevant_map.items() if ok]
         logger.info(f"[CHAT] NVIDIA relevant files: {relevant_files}")
     except Exception as e:
@@ -850,32 +851,56 @@ async def _chat_impl(
             logger.info(f"[CHAT] Forced-include mentioned files into relevance: {extra}")
 
     # 2) Memory context: recent 3 via NVIDIA, remaining 17 via semantic
-    # recent 3 related (we do a simple include-all; NVIDIA will prune by "related" selection using the same mechanism as files_relevance but here handled in history)
-    recent_related, semantic_related = await related_recent_and_semantic_context(user_id, question, memory, embedder)
-    # For recent_related (empty placeholder), do NVIDIA pruning now:
-    recent3 = memory.recent(user_id, 3)
-    if recent3:
-        sys = "Pick only items that directly relate to the new question. Output the selected items verbatim, no commentary. If none, output nothing."
-        numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
-        user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' values concatenated."
-        try:
-            from utils.rotator import robust_post_json
-            key = nvidia_rotator.get_key()
-            url = "https://integrate.api.nvidia.com/v1/chat/completions"
-            payload = {
-                "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
-                "temperature": 0.0,
-                "messages": [
-                    {"role": "system", "content": sys},
-                    {"role": "user", "content": user},
-                ]
-            }
-            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key or ''}"}
-            data = await robust_post_json(url, headers, payload, nvidia_rotator)
-            recent_related = data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            logger.warning(f"Recent-related NVIDIA error: {e}")
+    # Use enhanced context retrieval if available, otherwise fallback to original method
+    try:
+        from memo.history import get_history_manager
+        history_manager = get_history_manager(memory)
+        recent_related, semantic_related = await history_manager.related_recent_and_semantic_context(
+            user_id, question, embedder
+        )
+    except Exception as e:
+        logger.warning(f"[CHAT] Enhanced context retrieval failed, using fallback: {e}")
+        # Fallback to original method
+        recent3 = memory.recent(user_id, 3)
+        if recent3:
+            sys = "Pick only items that directly relate to the new question. Output the selected items verbatim, no commentary. If none, output nothing."
+            numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
+            user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' values concatenated."
+            try:
+                from utils.rotator import robust_post_json
+                key = nvidia_rotator.get_key()
+                url = "https://integrate.api.nvidia.com/v1/chat/completions"
+                payload = {
+                    "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
+                    "temperature": 0.0,
+                    "messages": [
+                        {"role": "system", "content": sys},
+                        {"role": "user", "content": user},
+                    ]
+                }
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key or ''}"}
+                data = await robust_post_json(url, headers, payload, nvidia_rotator)
+                recent_related = data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                logger.warning(f"Recent-related NVIDIA error: {e}")
+                recent_related = ""
+        else:
             recent_related = ""
+        
+        # Get semantic context from remaining memories
+        rest17 = memory.rest(user_id, 3)
+        if rest17:
+            import numpy as np
+            def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+                denom = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
+                return float(np.dot(a, b) / denom)
+            
+            qv = np.array(embedder.embed([question])[0], dtype="float32")
+            mats = embedder.embed([s.strip() for s in rest17])
+            sims = [(_cosine(qv, np.array(v, dtype="float32")), s) for v, s in zip(mats, rest17)]
+            sims.sort(key=lambda x: x[0], reverse=True)
+            top = [s for (sc, s) in sims[:3] if sc > 0.15]
+            semantic_related = "\n\n".join(top) if top else ""
 
     # 3) RAG vector search (restricted to relevant files if any)
     logger.info(f"[CHAT] Starting vector search with relevant_files={relevant_files}")
@@ -1006,8 +1031,24 @@ async def _chat_impl(
         answer = "I had trouble contacting the language model provider just now. Please try again."
     # After answering: summarize QA and store in memory (LRU, last 20)
     try:
-        qa_sum = await summarize_qa_with_nvidia(question, answer, nvidia_rotator)
+        from memo.history import get_history_manager
+        history_manager = get_history_manager(memory)
+        qa_sum = await history_manager.summarize_qa_with_nvidia(question, answer, nvidia_rotator)
         memory.add(user_id, qa_sum)
+        
+        # Also store enhanced conversation memory if available
+        if memory.is_enhanced_available():
+            await memory.add_conversation_memory(
+                user_id=user_id,
+                question=question,
+                answer=answer,
+                project_id=project_id,
+                context={
+                    "relevant_files": relevant_files,
+                    "sources_count": len(sources_meta),
+                    "timestamp": time.time()
+                }
+            )
     except Exception as e:
         logger.warning(f"QA summarize/store failed: {e}")
     # Trim for logging

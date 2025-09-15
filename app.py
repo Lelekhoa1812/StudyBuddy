@@ -627,13 +627,14 @@ async def generate_report(
     sources_meta = []
     for h in hits:
         doc = h["doc"]
-        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 2000)}")
+        chunk_id = str(doc.get("_id", ""))
+        contexts.append(f"[CHUNK_ID: {chunk_id}] [{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 2000)}")
         sources_meta.append({
             "filename": doc.get("filename"),
             "topic_name": doc.get("topic_name"),
             "page_span": doc.get("page_span"),
             "score": float(h.get("score", 0.0)),
-            "chunk_id": str(doc.get("_id", ""))
+            "chunk_id": chunk_id
         })
     context_text = "\n\n---\n\n".join(contexts) if contexts else ""
     file_summary = doc_sum.get("summary", "")
@@ -646,28 +647,34 @@ async def generate_report(
         filter_sys = (
             "You are an expert content analyst. Given the user's specific instructions and the document content, "
             "identify which sections/chunks are MOST relevant to their request. "
-            "Return a JSON object with this structure: {\"relevant_chunks\": [\"chunk_id_1\", \"chunk_id_2\"], \"focus_areas\": [\"key topic 1\", \"key topic 2\"]}"
+            "Each chunk is prefixed with [CHUNK_ID: <id>] - use these exact IDs in your response. "
+            "Return a JSON object with this structure: {\"relevant_chunks\": [\"<chunk_id_1>\", \"<chunk_id_2>\"], \"focus_areas\": [\"key topic 1\", \"key topic 2\"]}"
         )
         filter_user = f"USER_INSTRUCTIONS: {instructions}\n\nDOCUMENT_SUMMARY: {file_summary}\n\nAVAILABLE_CHUNKS:\n{context_text}\n\nIdentify only the chunks that directly address the user's specific request."
         
         try:
             selection_filter = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
             filter_response = await generate_answer_with_model(selection_filter, filter_sys, filter_user, gemini_rotator, nvidia_rotator)
+            logger.info(f"[REPORT] Raw filter response: {filter_response}")
             # Try to parse the filter response to get relevant chunks
             import json
             try:
                 filter_data = json.loads(filter_response)
                 relevant_chunk_ids = filter_data.get("relevant_chunks", [])
                 focus_areas = filter_data.get("focus_areas", [])
-                logger.info(f"[REPORT] Content filtering identified {len(relevant_chunk_ids)} relevant chunks and focus areas: {focus_areas}")
+                logger.info(f"[REPORT] Content filtering identified {len(relevant_chunk_ids)} relevant chunks: {relevant_chunk_ids} and focus areas: {focus_areas}")
                 # Filter context to only relevant chunks
                 if relevant_chunk_ids and hits:
                     filtered_hits = [h for h in hits if str(h["doc"].get("_id", "")) in relevant_chunk_ids]
                     if filtered_hits:
                         hits = filtered_hits
                         logger.info(f"[REPORT] Filtered context from {len(hits)} chunks to {len(filtered_hits)} relevant chunks")
-            except json.JSONDecodeError:
-                logger.warning(f"[REPORT] Could not parse filter response, using all chunks: {filter_response}")
+                    else:
+                        logger.warning(f"[REPORT] No matching chunks found for IDs: {relevant_chunk_ids}")
+                else:
+                    logger.warning(f"[REPORT] No relevant chunk IDs returned or no hits available")
+            except json.JSONDecodeError as e:
+                logger.warning(f"[REPORT] Could not parse filter response, using all chunks. JSON error: {e}. Response: {filter_response}")
         except Exception as e:
             logger.warning(f"[REPORT] Content filtering failed: {e}")
     

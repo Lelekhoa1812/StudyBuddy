@@ -454,52 +454,56 @@ def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
     Apply lightweight syntax highlighting on XML-escaped code text.
     Works with escaped entities (&lt; &gt; &amp;), so regexes should not rely on raw quotes.
     """
-    # Generic number highlighting
-    out = re.sub(r"\b(\d+\.?\d*)\b", r"<font color='#d19a66'>\1</font>", escaped_code)
+    def sub_outside_tags(pattern, repl, text, flags=0):
+        parts = re.split(r'(</?[^>]+>)', text)
+        for idx in range(0, len(parts)):
+            if idx % 2 == 0:  # outside tags
+                parts[idx] = re.sub(pattern, repl, parts[idx], flags=flags)
+        return ''.join(parts)
 
+    out = escaped_code
     lang = (language or 'text').lower()
 
     if lang in ('python', 'py'):
+        # Comments first
+        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
         keywords = (
             'def|class|if|else|elif|for|while|try|except|finally|import|from|as|with|return|yield|lambda|and|or|not|in|is|True|False|None|pass|break|continue|raise|assert'
         )
-        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
-        # Comments starting with # to end of line
-        out = re.sub(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
 
     elif lang in ('javascript', 'js', 'typescript', 'ts'):
+        out = sub_outside_tags(r"(//[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        out = sub_outside_tags(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#5c6370'>{m.group(0)}</font>", out)
         keywords = (
             'function|var|let|const|if|else|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|new|this|typeof|instanceof|true|false|null|undefined|async|await'
         )
-        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
-        # Line comments
-        out = re.sub(r"(//[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
-        # Block comments (escaped form still contains /* */)
-        out = re.sub(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#5c6370'>{m.group(0)}</font>", out)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
 
-    elif lang in ('json'):
-        # true|false|null
-        out = re.sub(r"\b(true|false|null)\b", r"<font color='#56b6c2'><b>\1</b></font>", out)
-        # Keys "key": stay as &quot;key&quot; after escaping; highlight inside quotes followed by :
-        out = re.sub(r"(&quot;[^&]*?&quot;)(\s*:)", r"<font color='#61afef'>\1</font>\2", out)
+    elif lang in ('json',):
+        out = sub_outside_tags(r"\b(true|false|null)\b", r"<font color='#56b6c2'><b>\1</b></font>", out)
+        out = sub_outside_tags(r"(&quot;[^&]*?&quot;)(\s*:)", r"<font color='#61afef'>\1</font>\2", out)
 
     elif lang in ('bash', 'sh', 'shell'):
-        out = re.sub(r"(^|\n)(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)", r"\1\2<font color='#c678dd'><b>\3</b></font>", out)
-        out = re.sub(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        out = sub_outside_tags(r"(^|\n)(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)", r"\1\2<font color='#c678dd'><b>\3</b></font>", out)
 
     elif lang in ('yaml', 'yml'):
-        out = re.sub(r"(^|\n)(\s*)([^:\n]+)(:)", r"\1\2<font color='#61afef'>\3</font>\4", out)
-        out = re.sub(r"\b(true|false|yes|no|on|off)\b", r"<font color='#56b6c2'><b>\1</b></font>", out, flags=re.IGNORECASE)
+        out = sub_outside_tags(r"(^|\n)(\s*)([^:\n]+)(:)", r"\1\2<font color='#61afef'>\3</font>\4", out)
+        out = sub_outside_tags(r"\b(true|false|yes|no|on|off)\b", r"<font color='#56b6c2'><b>\1</b></font>", out, flags=re.IGNORECASE)
 
-    elif lang in ('sql'):
+    elif lang in ('sql',):
         keywords = (
             'SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|DATABASE|SCHEMA|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|UNION|DISTINCT|COUNT|SUM|AVG|MAX|MIN|AND|OR|NOT|IN|BETWEEN|LIKE|IS|NULL|ASC|DESC|LIMIT|OFFSET'
         )
-        out = re.sub(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out, flags=re.IGNORECASE)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out, flags=re.IGNORECASE)
 
-    # Strings: handle common forms using escaped quotes &quot; and &#x27;
-    out = re.sub(r"(&quot;.*?&quot;)", r"<font color='#98c379'>\1</font>", out)
-    out = re.sub(r"(&#x27;.*?&#x27;)", r"<font color='#98c379'>\1</font>", out)
+    # Strings
+    out = sub_outside_tags(r"(&quot;.*?&quot;)", r"<font color='#98c379'>\1</font>", out)
+    out = sub_outside_tags(r"(&#x27;.*?&#x27;)", r"<font color='#98c379'>\1</font>", out)
+
+    # Numbers last
+    out = sub_outside_tags(r"\b(\d+\.?\d*)\b", r"<font color='#d19a66'>\1</font>", out)
 
     return out
 

@@ -275,9 +275,18 @@
         const messagesContainer = document.getElementById('messages');
         messagesContainer.innerHTML = '';
         
-        // Load chat history
+        // Load chat history using global markdown-aware renderer
         messages.forEach(msg => {
-          appendMessage(msg.role, msg.content);
+          if (typeof window.appendMessage === 'function') {
+            window.appendMessage(msg.role, msg.content);
+          } else {
+            // Fallback if not yet defined
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `msg ${msg.role}`;
+            messageDiv.textContent = msg.content;
+            messagesContainer.appendChild(messageDiv);
+          }
         });
         
         // Scroll to bottom
@@ -290,13 +299,7 @@
     }
   }
 
-  function appendMessage(role, content) {
-    const messagesContainer = document.getElementById('messages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `msg ${role}`;
-    messageDiv.textContent = content;
-    messagesContainer.appendChild(messageDiv);
-  }
+  // Do not shadow global appendMessage from script.js
 
   function enableChat() {
     const questionInput = document.getElementById('question');

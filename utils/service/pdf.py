@@ -62,9 +62,12 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                 i += 1
             
             if code_lines:
+                from reportlab.platypus import Preformatted, Paragraph
                 code_text = '\n'.join(code_lines)
-                formatted_code = _format_code_block(code_text, language)
-                story.append(Paragraph(formatted_code, code_style))
+                # Add a small language header, then render raw code in a preformatted block to avoid parser errors
+                lang_header = f"<font color='#666666' size='8'>[{language.upper()}]</font>"
+                story.append(Paragraph(lang_header, code_style))
+                story.append(Preformatted(code_text, code_style))
         
         # Lists (including nested)
         elif line.startswith('- ') or line.startswith('* '):
@@ -207,38 +210,11 @@ def _detect_language_from_content(lines: list, start_index: int) -> str:
 
 def _format_code_block(code_text: str, language: str) -> str:
     """
-    Format code blocks with syntax highlighting for different languages
+    Deprecated: We now render code blocks with Preformatted to avoid paragraph parser errors.
+    Kept for compatibility if referenced elsewhere; returns escaped plain text.
     """
-    # Escape HTML characters
-    code_text = code_text.replace('&', '&amp;')
-    code_text = code_text.replace('<', '&lt;')
-    code_text = code_text.replace('>', '&gt;')
-    
-    # Add language header
-    language_header = f"<font color='#666666' size='8'>[{language.upper()}]</font><br/>"
-    
-    # Apply syntax highlighting based on language
-    if language.lower() in ['python', 'py']:
-        formatted_code = _highlight_python(code_text)
-    elif language.lower() in ['json']:
-        formatted_code = _highlight_json(code_text)
-    elif language.lower() in ['xml', 'html']:
-        formatted_code = _highlight_xml(code_text)
-    elif language.lower() in ['java']:
-        formatted_code = _highlight_java(code_text)
-    elif language.lower() in ['javascript', 'js']:
-        formatted_code = _highlight_javascript(code_text)
-    elif language.lower() in ['sql']:
-        formatted_code = _highlight_sql(code_text)
-    elif language.lower() in ['yaml', 'yml']:
-        formatted_code = _highlight_yaml(code_text)
-    elif language.lower() in ['bash', 'shell', 'sh']:
-        formatted_code = _highlight_bash(code_text)
-    else:
-        # Default formatting for unknown languages
-        formatted_code = f"<font name='Courier' size='9'>{code_text}</font>"
-    
-    return language_header + formatted_code
+    code_text = code_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return f"<font name='Courier' size='9'>{code_text}</font>"
 
 
 def _highlight_python(code: str) -> str:

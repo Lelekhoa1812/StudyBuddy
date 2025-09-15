@@ -97,87 +97,138 @@ class RAGStore:
             files.append(serializable_file)
         return files
 
-    def vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int = 6, filenames: Optional[List[str]] = None):
-        if USE_ATLAS_VECTOR:
-            # Atlas Vector Search (requires pre-created index on 'embedding')
-            match_stage = {"user_id": user_id, "project_id": project_id}
-            if filenames:
-                match_stage["filename"] = {"$in": filenames}
-            pipeline = [
-                {
-                    "$search": {
-                        "index": INDEX_NAME,
-                        "knnBeta": {
-                            "vector": query_vector,
-                            "path": "embedding",
-                            "k": k,
-                        }
-                    }
-                },
-                {"$match": match_stage},
-                {"$project": {"doc": "$$ROOT", "score": {"$meta": "searchScore"}}},
-                {"$limit": k},
-            ]
-            hits = list(self.chunks.aggregate(pipeline))
-            
-            # Convert MongoDB documents to JSON-serializable format
-            serializable_hits = []
-            for hit in hits:
-                doc = hit["doc"]
-                serializable_doc = {}
-                for key, value in doc.items():
-                    if key == '_id':
-                        serializable_doc[key] = str(value)  # Convert ObjectId to string
-                    elif hasattr(value, 'isoformat'):  # Handle datetime objects
-                        serializable_doc[key] = value.isoformat()
-                    else:
-                        serializable_doc[key] = value
-                
-                serializable_hits.append({
-                    "doc": serializable_doc,
-                    "score": float(hit.get("score", 0.0))
-                })
-            
-            return serializable_hits
+    def vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int = 6, filenames: Optional[List[str]] = None, search_type: str = "hybrid"):
+        """
+        Enhanced vector search with multiple strategies:
+        - hybrid: Combines Atlas and local search
+        - flat: Exhaustive search for maximum accuracy
+        - atlas: Uses Atlas Vector Search only
+        - local: Uses local cosine similarity only
+        """
+        if search_type == "flat" or (search_type == "hybrid" and not USE_ATLAS_VECTOR):
+            return self._flat_vector_search(user_id, project_id, query_vector, k, filenames)
+        elif search_type == "atlas" and USE_ATLAS_VECTOR:
+            return self._atlas_vector_search(user_id, project_id, query_vector, k, filenames)
+        elif search_type == "local":
+            return self._local_vector_search(user_id, project_id, query_vector, k, filenames)
         else:
-            # Fallback: scan limited sample and compute cosine locally
-            q = {"user_id": user_id, "project_id": project_id}
-            if filenames:
-                q["filename"] = {"$in": filenames}
-            # Prefer recent inserts to increase chance of hits; widen sample size modestly
-            sample_limit = max(3000, k * 20)
-            sample = list(self.chunks.find(q).sort([("_id", -1)]).limit(sample_limit))
-            if not sample:
-                return []
-            qv = np.array(query_vector, dtype="float32")
-            scores = []
-            for d in sample:
-                v = np.array(d.get("embedding", [0]*VECTOR_DIM), dtype="float32")
-                denom = (np.linalg.norm(qv) * np.linalg.norm(v)) or 1.0
-                sim = float(np.dot(qv, v) / denom)
-                scores.append((sim, d))
-            scores.sort(key=lambda x: x[0], reverse=True)
-            top = scores[:k]
-            logger.info(f"Vector search sample={len(sample)} returned top={len(top)}")
-            
-            # Convert MongoDB documents to JSON-serializable format
-            serializable_results = []
-            for score, doc in top:
-                serializable_doc = {}
-                for key, value in doc.items():
-                    if key == '_id':
-                        serializable_doc[key] = str(value)  # Convert ObjectId to string
-                    elif hasattr(value, 'isoformat'):  # Handle datetime objects
-                        serializable_doc[key] = value.isoformat()
-                    else:
-                        serializable_doc[key] = value
-                
-                serializable_results.append({
-                    "doc": serializable_doc,
-                    "score": float(score)  # Ensure score is a regular float
-                })
-            
-            return serializable_results
+            # Default hybrid approach
+            if USE_ATLAS_VECTOR:
+                atlas_results = self._atlas_vector_search(user_id, project_id, query_vector, k, filenames)
+                if atlas_results:
+                    return atlas_results
+            return self._local_vector_search(user_id, project_id, query_vector, k, filenames)
+
+    def _atlas_vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int, filenames: Optional[List[str]] = None):
+        """Atlas Vector Search implementation"""
+        match_stage = {"user_id": user_id, "project_id": project_id}
+        if filenames:
+            match_stage["filename"] = {"$in": filenames}
+        pipeline = [
+            {
+                "$search": {
+                    "index": INDEX_NAME,
+                    "knnBeta": {
+                        "vector": query_vector,
+                        "path": "embedding",
+                        "k": k,
+                    }
+                }
+            },
+            {"$match": match_stage},
+            {"$project": {"doc": "$$ROOT", "score": {"$meta": "searchScore"}}},
+            {"$limit": k},
+        ]
+        hits = list(self.chunks.aggregate(pipeline))
+        return self._serialize_hits(hits)
+
+    def _local_vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int, filenames: Optional[List[str]] = None):
+        """Local cosine similarity search with improved sampling"""
+        q = {"user_id": user_id, "project_id": project_id}
+        if filenames:
+            q["filename"] = {"$in": filenames}
+        
+        # Increase sample size for better accuracy
+        sample_limit = max(5000, k * 50)
+        sample = list(self.chunks.find(q).sort([("_id", -1)]).limit(sample_limit))
+        if not sample:
+            return []
+        
+        qv = np.array(query_vector, dtype="float32")
+        scores = []
+        
+        for d in sample:
+            v = np.array(d.get("embedding", [0]*VECTOR_DIM), dtype="float32")
+            denom = (np.linalg.norm(qv) * np.linalg.norm(v)) or 1.0
+            sim = float(np.dot(qv, v) / denom)
+            scores.append((sim, d))
+        
+        scores.sort(key=lambda x: x[0], reverse=True)
+        top = scores[:k]
+        logger.info(f"Local vector search: {len(sample)} docs sampled, {len(top)} results")
+        
+        return self._serialize_results(top)
+
+    def _flat_vector_search(self, user_id: str, project_id: str, query_vector: List[float], k: int, filenames: Optional[List[str]] = None):
+        """Flat exhaustive search for maximum accuracy"""
+        q = {"user_id": user_id, "project_id": project_id}
+        if filenames:
+            q["filename"] = {"$in": filenames}
+        
+        # Get ALL relevant documents for exhaustive search
+        all_docs = list(self.chunks.find(q))
+        if not all_docs:
+            return []
+        
+        qv = np.array(query_vector, dtype="float32")
+        scores = []
+        
+        for doc in all_docs:
+            v = np.array(doc.get("embedding", [0]*VECTOR_DIM), dtype="float32")
+            denom = (np.linalg.norm(qv) * np.linalg.norm(v)) or 1.0
+            sim = float(np.dot(qv, v) / denom)
+            scores.append((sim, doc))
+        
+        scores.sort(key=lambda x: x[0], reverse=True)
+        top = scores[:k]
+        logger.info(f"Flat vector search: {len(all_docs)} docs searched, {len(top)} results")
+        
+        return self._serialize_results(top)
+
+    def _serialize_hits(self, hits):
+        """Serialize Atlas search hits"""
+        serializable_hits = []
+        for hit in hits:
+            doc = hit["doc"]
+            serializable_doc = self._serialize_doc(doc)
+            serializable_hits.append({
+                "doc": serializable_doc,
+                "score": float(hit.get("score", 0.0))
+            })
+        return serializable_hits
+
+    def _serialize_results(self, results):
+        """Serialize local search results"""
+        serializable_results = []
+        for score, doc in results:
+            serializable_doc = self._serialize_doc(doc)
+            serializable_results.append({
+                "doc": serializable_doc,
+                "score": float(score)
+            })
+        return serializable_results
+
+    def _serialize_doc(self, doc):
+        """Convert MongoDB document to JSON-serializable format"""
+        serializable_doc = {}
+        for key, value in doc.items():
+            if key == '_id':
+                serializable_doc[key] = str(value)
+            elif hasattr(value, 'isoformat'):
+                serializable_doc[key] = value.isoformat()
+            else:
+                serializable_doc[key] = value
+        return serializable_doc
 
 
 def ensure_indexes(store: RAGStore):

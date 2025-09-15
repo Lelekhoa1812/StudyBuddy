@@ -27,6 +27,7 @@ from utils.router import select_model, generate_answer_with_model
 from utils.summarizer import cheap_summarize
 from utils.common import trim_text
 from utils.logger import get_logger
+import re
 
 # ────────────────────────────── Response Models ──────────────────────────────
 class ProjectResponse(BaseModel):
@@ -615,9 +616,13 @@ async def generate_report(
     if not doc_sum:
         raise HTTPException(404, detail="No summary found for that file.")
 
-    # Retrieve top-k chunks for this file
-    q_vec = embedder.embed([f"Comprehensive report for {eff_name}"])[0]
-    hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=8, filenames=[eff_name])
+    # Retrieve top-k chunks for this file using enhanced search
+    query_text = f"Comprehensive report for {eff_name}"
+    if instructions.strip():
+        query_text = f"{instructions} {eff_name}"
+    
+    q_vec = embedder.embed([query_text])[0]
+    hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=8, filenames=[eff_name], search_type="flat")
     if not hits:
         # Fall back to summary-only report
         hits = []
@@ -745,9 +750,86 @@ async def generate_report_pdf(
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
+
+
+# ────────────────────────────── Enhanced RAG Helper Functions ──────────────────────────────
+
+async def _generate_query_variations(question: str, nvidia_rotator) -> List[str]:
+    """
+    Generate multiple query variations using Chain of Thought reasoning
+    """
+    if not nvidia_rotator:
+        return [question]  # Fallback to original question
+    
+    try:
+        # Use NVIDIA to generate query variations
+        sys_prompt = """You are an expert at query expansion and reformulation. Given a user question, generate 3-5 different ways to ask the same question that would help retrieve relevant information from a document database.
+
+Focus on:
+1. Different terminology and synonyms
+2. More specific technical terms
+3. Broader conceptual queries
+4. Question reformulations
+
+Return only the variations, one per line, no numbering or extra text."""
+        
+        user_prompt = f"Original question: {question}\n\nGenerate query variations:"
+        
+        from utils.router import generate_answer_with_model
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        # Parse variations
+        variations = [line.strip() for line in response.split('\n') if line.strip()]
+        variations = [v for v in variations if len(v) > 10]  # Filter out too short variations
+        
+        # Always include original question
+        if question not in variations:
+            variations.insert(0, question)
+        
+        return variations[:5]  # Limit to 5 variations
+        
     except Exception as e:
-        logger.error(f"[PDF] Unexpected error in PDF endpoint: {e}")
-        raise HTTPException(500, detail=f"Failed to generate PDF: {str(e)}")
+        logger.warning(f"Query variation generation failed: {e}")
+        return [question]
+
+
+def _deduplicate_and_rank_hits(all_hits: List[Dict], original_question: str) -> List[Dict]:
+    """
+    Deduplicate hits by chunk ID and rank by relevance to original question
+    """
+    if not all_hits:
+        return []
+    
+    # Deduplicate by chunk ID
+    seen_ids = set()
+    unique_hits = []
+    
+    for hit in all_hits:
+        chunk_id = str(hit.get("doc", {}).get("_id", ""))
+        if chunk_id not in seen_ids:
+            seen_ids.add(chunk_id)
+            unique_hits.append(hit)
+    
+    # Simple ranking: boost scores for hits that contain question keywords
+    question_words = set(original_question.lower().split())
+    
+    for hit in unique_hits:
+        content = hit.get("doc", {}).get("content", "").lower()
+        topic = hit.get("doc", {}).get("topic_name", "").lower()
+        
+        # Count keyword matches
+        content_matches = sum(1 for word in question_words if word in content)
+        topic_matches = sum(1 for word in question_words if word in topic)
+        
+        # Boost score based on keyword matches
+        keyword_boost = 1.0 + (content_matches * 0.1) + (topic_matches * 0.2)
+        hit["score"] = hit.get("score", 0.0) * keyword_boost
+    
+    # Sort by boosted score
+    unique_hits.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+    
+    return unique_hits
 
 
 @app.post("/chat", response_model=ChatAnswerResponse)
@@ -909,39 +991,75 @@ async def _chat_impl(
             top = [s for (sc, s) in sims[:3] if sc > 0.15]
             semantic_related = "\n\n".join(top) if top else ""
 
-    # 3) RAG vector search (restricted to relevant files if any)
-    logger.info(f"[CHAT] Starting vector search with relevant_files={relevant_files}")
-    q_vec = embedder.embed([question])[0]
-    hits = rag.vector_search(
-        user_id=user_id,
-        project_id=project_id,
-        query_vector=q_vec,
-        k=k,
-        filenames=relevant_files if relevant_files else None
-    )
-    logger.info(f"[CHAT] Vector search returned {len(hits) if hits else 0} hits")
-    if not hits:
-        logger.info(f"[CHAT] No hits with relevance filter. relevant_files={relevant_files}")
-        # Retry 1: if we have explicit mentions, try restricting only to them
-        if mentioned_normalized:
+    # 3) Enhanced query reasoning and RAG vector search
+    logger.info(f"[CHAT] Starting enhanced vector search with relevant_files={relevant_files}")
+    
+    # Chain of Thought query breakdown for better retrieval
+    enhanced_queries = await _generate_query_variations(question, nvidia_rotator)
+    logger.info(f"[CHAT] Generated {len(enhanced_queries)} query variations")
+    
+    # Try multiple search strategies
+    all_hits = []
+    search_strategies = ["flat", "hybrid", "local"]  # Try most accurate first
+    
+    for strategy in search_strategies:
+        for query_variant in enhanced_queries:
+            q_vec = embedder.embed([query_variant])[0]
             hits = rag.vector_search(
                 user_id=user_id,
                 project_id=project_id,
                 query_vector=q_vec,
                 k=k,
-                filenames=mentioned_normalized
+                filenames=relevant_files if relevant_files else None,
+                search_type=strategy
             )
-            logger.info(f"[CHAT] Retry with mentioned files only → hits={len(hits) if hits else 0}")
-        # Retry 2: if still empty, try without any filename restriction
+            if hits:
+                all_hits.extend(hits)
+                logger.info(f"[CHAT] {strategy} search with '{query_variant[:50]}...' returned {len(hits)} hits")
+                break  # If we found hits with this strategy, move to next query
+        if all_hits:
+            break  # If we found hits, don't try other strategies
+    
+    # Deduplicate and rank results
+    hits = _deduplicate_and_rank_hits(all_hits, question)
+    logger.info(f"[CHAT] Final vector search returned {len(hits) if hits else 0} hits")
+    if not hits:
+        logger.info(f"[CHAT] No hits with relevance filter. relevant_files={relevant_files}")
+        # Fallback 1: Try with original question and flat search
+        q_vec_original = embedder.embed([question])[0]
+        hits = rag.vector_search(
+            user_id=user_id,
+            project_id=project_id,
+            query_vector=q_vec_original,
+            k=k,
+            filenames=relevant_files if relevant_files else None,
+            search_type="flat"
+        )
+        logger.info(f"[CHAT] Fallback flat search → hits={len(hits) if hits else 0}")
+        
+        # Fallback 2: if we have explicit mentions, try restricting only to them
+        if not hits and mentioned_normalized:
+            hits = rag.vector_search(
+                user_id=user_id,
+                project_id=project_id,
+                query_vector=q_vec_original,
+                k=k,
+                filenames=mentioned_normalized,
+                search_type="flat"
+            )
+            logger.info(f"[CHAT] Fallback with mentioned files only → hits={len(hits) if hits else 0}")
+        
+        # Fallback 3: if still empty, try without any filename restriction
         if not hits:
             hits = rag.vector_search(
                 user_id=user_id,
                 project_id=project_id,
-                query_vector=q_vec,
+                query_vector=q_vec_original,
                 k=k,
-                filenames=None
+                filenames=None,
+                search_type="flat"
             )
-            logger.info(f"[CHAT] Retry with all files → hits={len(hits) if hits else 0}")
+            logger.info(f"[CHAT] Fallback with all files → hits={len(hits) if hits else 0}")
         # If still no hits, and we have mentioned files, try returning their summaries if present
         if not hits and mentioned_normalized:
             fsum_map = {f["filename"]: f.get("summary", "") for f in files_list}

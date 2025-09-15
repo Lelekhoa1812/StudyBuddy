@@ -90,7 +90,7 @@ async def summarize_qa_with_nvidia(question: str, answer: str, rotator) -> str:
     """Legacy function - use HistoryManager.summarize_qa_with_nvidia() instead"""
     return await summarize_qa(question, answer, rotator)
 
-async def files_relevance(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
+async def files_relevance_legacy(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
     """Legacy function - use HistoryManager.files_relevance() instead"""
     return await files_relevance(question, file_summaries, rotator)
 

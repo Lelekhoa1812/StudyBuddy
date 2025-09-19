@@ -93,7 +93,6 @@ async def _generate_query_variations(question: str, nvidia_rotator) -> List[str]
     """
     if not nvidia_rotator:
         return [question]  # Fallback to original question
-    
     try:
         # Use NVIDIA to generate query variations
         sys_prompt = """You are an expert at query expansion and reformulation. Given a user question, generate 3-5 different ways to ask the same question that would help retrieve relevant information from a document database.
@@ -406,9 +405,10 @@ async def _chat_impl(
         file_summary_block = "\n".join(lines)
 
     system_prompt = (
-        "You are a careful study assistant. Answer strictly using the given CONTEXT.\n"
-        "If the answer isn't in the context, say 'I don't know based on the provided materials.'\n"
-        "Write concise, clear explanations with citations like (source: actual_filename, topic).\n"
+        "You are a careful study assistant. Prefer using the provided CONTEXT to answer.\n"
+        "If the CONTEXT is insufficient, you may use general knowledge responsibly, avoiding fabricated details.\n"
+        "Only say 'I don't know based on the provided materials.' when the question requires specific facts that are absent.\n"
+        "Always include citations to provided materials when you use them, formatted as (source: actual_filename, topic).\n"
         "Use the exact filename as provided in the context, not placeholders.\n"
     )
 

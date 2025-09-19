@@ -394,7 +394,9 @@ async def _chat_impl(
     for h in hits:
         doc = h["doc"]
         score = h["score"]
-        contexts.append(f"[{doc.get('topic_name','Topic')}] {trim_text(doc.get('content',''), 2000)}")
+        # Avoid overly similar local chunks by simple Jaccard on words
+        snippet = trim_text(doc.get('content',''), 2000)
+        contexts.append(f"[{doc.get('topic_name','Topic')}] {snippet}")
         sources_meta.append({
             "filename": doc.get("filename"),
             "topic_name": doc.get("topic_name"),

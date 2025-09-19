@@ -57,6 +57,10 @@ async def fetch_readable(url: str) -> str:
                 logger.info(f"[SEARCH] Reader fetched: {url}")
                 return r.text.strip()
             r2 = await client.get(url)
+            ctype = r2.headers.get("content-type", "").lower()
+            if any(binmt in ctype for binmt in ("image/", "video/", "audio/", "application/zip")):
+                logger.info(f"[SEARCH] Skipping non-text content: {url} ({ctype})")
+                return ""
             logger.info(f"[SEARCH] Direct fetched: {url} (reader not usable)")
             return (r2.text or "").strip()
     except Exception as e:
@@ -203,30 +207,32 @@ async def plan_and_build_web_context(question: str, max_web: int = 30, per_query
     snippets: List[Tuple[float, str, Dict[str, Any]]] = []  # (score, text, meta)
     q_vec = np.array(embedder.embed([question])[0], dtype="float32")
 
+    # Concurrency limiter to avoid hammering
+    sem = asyncio.Semaphore(8)
+
+    async def process_url(url: str) -> Tuple[float, str, Dict[str, Any]]:
+        async with sem:
+            txt = await fetch_readable(url)
+            if not txt or len(txt) < 200:
+                return 0.0, "", {}
+            try:
+                summary = await llama_summarize(txt[:6000], max_sentences=4)
+            except Exception:
+                summary = txt[:1000]
+            v = np.array(embedder.embed([summary])[0], dtype="float32")
+            sim = _cosine_similarity(q_vec, v)
+            meta = {"url": url, "topic_name": summary.split('\n')[0][:120], "score": float(sim), "kind": "web"}
+            return sim, summary, meta
+
     for sq in subqueries:
         urls = await duckduckgo_search(sq, max_results=per_q)
         if not urls:
             continue
-
-        async def _fetch(u: str):
-            txt = await fetch_readable(u)
-            return u, txt
-
-        tasks = [asyncio.create_task(_fetch(u)) for u in urls]
-        fetched = await asyncio.gather(*tasks)
-        web_docs = [(u, t) for (u, t) in fetched if t and len(t) > 200]
-        if not web_docs:
-            continue
-
-        for url, text in web_docs:
-            try:
-                summary = await llama_summarize(text[:6000], max_sentences=4)
-            except Exception:
-                summary = text[:1000]
-            v = np.array(embedder.embed([summary])[0], dtype="float32")
-            sim = _cosine_similarity(q_vec, v)
-            meta = {"url": url, "topic_name": summary.split('\n')[0][:120], "score": float(sim), "kind": "web"}
-            snippets.append((sim, summary, meta))
+        tasks = [asyncio.create_task(process_url(u)) for u in urls]
+        results = await asyncio.gather(*tasks)
+        for sim, summary, meta in results:
+            if meta and summary:
+                snippets.append((sim, summary, meta))
 
     if not snippets:
         return "", []

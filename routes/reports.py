@@ -4,6 +4,7 @@ from typing import List, Dict
 from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, gemini_rotator, nvidia_rotator
+from .search import build_web_context
 from helpers.models import ReportResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
@@ -16,7 +17,9 @@ async def generate_report(
     filename: str = Form(...),
     outline_words: int = Form(200),
     report_words: int = Form(1200),
-    instructions: str = Form("")
+    instructions: str = Form(""),
+    use_web: int = Form(0),
+    max_web: int = Form(20)
 ):
     logger.info("[REPORT] User Q/report: %s", trim_text(instructions, 15).replace("\n", " "))
     files_list = rag.list_files(user_id=user_id, project_id=project_id)
@@ -48,6 +51,10 @@ async def generate_report(
             "chunk_id": chunk_id
         })
     context_text = "\n\n---\n\n".join(contexts) if contexts else ""
+    web_context_block = ""
+    web_sources_meta: List[Dict] = []
+    if use_web:
+        web_context_block, web_sources_meta = await build_web_context(instructions or query_text, max_web=max_web, top_k=10)
     file_summary = doc_sum.get("summary", "")
 
     from utils.api.router import GEMINI_MED, GEMINI_PRO
@@ -88,7 +95,7 @@ async def generate_report(
         "The outline should directly address what the user asked for. Output as Markdown bullet list only. Keep it within about {} words."
     ).format(max(100, outline_words))
     instruction_context = f"USER_REQUEST: {instructions}\n\n" if instructions.strip() else ""
-    user_outline = f"{instruction_context}MATERIALS:\n\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
+    user_outline = f"{instruction_context}MATERIALS:\n\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\n[WEB_CONTEXT]\n{web_context_block}"
     try:
         selection_outline = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
         outline_md = await generate_answer_with_model(selection_outline, sys_outline, user_outline, gemini_rotator, nvidia_rotator)
@@ -108,14 +115,19 @@ async def generate_report(
         f"- Target length ~{max(600, report_words)} words\n"
         "- Ensure the report directly fulfills the user's request"
     )
-    user_report = f"{instruction_focus}OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}"
+    user_report = f"{instruction_focus}OUTLINE:\n{outline_md}\n\nMATERIALS:\n[FILE_SUMMARY from {eff_name}]\n{file_summary}\n\n[DOC_CONTEXT]\n{context_text}\n\n[WEB_CONTEXT]\n{web_context_block}"
     try:
         selection_report = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
         report_md = await generate_answer_with_model(selection_report, sys_report, user_report, gemini_rotator, nvidia_rotator)
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
         report_md = outline_md + "\n\n" + file_summary
-    return ReportResponse(filename=eff_name, report_markdown=report_md, sources=sources_meta)
+    # Merge local and web sources
+    merged_sources = list(sources_meta) + [
+        {"filename": s.get("url"), "topic_name": s.get("topic_name"), "score": s.get("score"), "kind": "web"}
+        for s in web_sources_meta
+    ]
+    return ReportResponse(filename=eff_name, report_markdown=report_md, sources=merged_sources)
 
 
 @app.post("/report/pdf")

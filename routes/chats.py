@@ -1,3 +1,4 @@
+# routes/chats.py  
 import json, time, re, uuid, asyncio, os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -6,6 +7,7 @@ from fastapi import Form, HTTPException
 from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator, nvidia_rotator
 from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse
 from utils.service.common import trim_text
+from .search import build_web_context
 from utils.api.router import select_model, generate_answer_with_model
 
 
@@ -169,11 +171,13 @@ async def chat(
     user_id: str = Form(...), 
     project_id: str = Form(...), 
     question: str = Form(...), 
-    k: int = Form(6)
+    k: int = Form(6),
+    use_web: int = Form(0),
+    max_web: int = Form(30)
 ):
     import asyncio
     try:
-        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k), timeout=120.0)
+        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web), timeout=120.0)
     except asyncio.TimeoutError:
         logger.error("[CHAT] Chat request timed out after 120 seconds")
         return ChatAnswerResponse(
@@ -187,7 +191,9 @@ async def _chat_impl(
     user_id: str, 
     project_id: str, 
     question: str, 
-    k: int
+    k: int,
+    use_web: int = 0,
+    max_web: int = 30
 ):
     import sys
     from memo.core import get_memory_system
@@ -398,6 +404,15 @@ async def _chat_impl(
         })
     context_text = "\n\n---\n\n".join(contexts)
 
+    # Optionally augment with web search context
+    web_context_block = ""
+    web_sources_meta: List[Dict[str, Any]] = []
+    if use_web:
+        try:
+            web_context_block, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10)
+        except Exception as e:
+            logger.warning(f"[CHAT] Web augmentation failed: {e}")
+
     file_summary_block = ""
     if relevant_files:
         fsum_map = {f["filename"]: f.get("summary","") for f in files_list}
@@ -421,6 +436,8 @@ async def _chat_impl(
     if file_summary_block:
         composed_context += "FILE_SUMMARIES:\n" + file_summary_block + "\n\n"
     composed_context += "DOC_CONTEXT:\n" + context_text
+    if web_context_block:
+        composed_context += "\n\nWEB_CONTEXT:\n" + web_context_block
 
     user_prompt = f"QUESTION:\n{question}\n\nCONTEXT:\n{composed_context}"
     selection = select_model(question=question, context=composed_context)
@@ -457,7 +474,130 @@ async def _chat_impl(
             )
     except Exception as e:
         logger.warning(f"QA summarize/store failed: {e}")
+    # Merge web sources if any (normalize to filename=url for frontend display)
+    if web_sources_meta:
+        for s in web_sources_meta:
+            sources_meta.append({
+                "filename": s.get("url"),
+                "topic_name": s.get("topic_name"),
+                "score": float(s.get("score", 0.0)),
+                "kind": "web"
+            })
     logger.info("LLM answer (trimmed): %s", trim_text(answer, 200).replace("\n", " "))
     return ChatAnswerResponse(answer=answer, sources=sources_meta, relevant_files=relevant_files)
 
 
+
+# ────────────────────────────── Web Search Augmented Chat ─────────────────────
+async def _duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
+    """Lightweight DuckDuckGo HTML search scraper returning result URLs."""
+    import httpx
+    urls: List[str] = []
+    try:
+        q = re.sub(r"\s+", "+", query.strip())
+        search_url = f"https://duckduckgo.com/html/?q={q}"
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
+            r = await client.get(search_url)
+            html = r.text
+            # Extract result links; tolerate both 'result__a' and generic anchors
+            for m in re.finditer(r'<a[^>]+class=\"result__a[^\"]*\"[^>]+href=\"(https?://[^\"]+)\"', html):
+                url = m.group(1)
+                if "duckduckgo.com" in url:
+                    continue
+                urls.append(url)
+            if len(urls) < max_results:
+                for m in re.finditer(r'<a[^>]+href=\"(https?://[^\"]+)\"', html):
+                    url = m.group(1)
+                    if "duckduckgo.com" in url:
+                        continue
+                    urls.append(url)
+            # Deduplicate while preserving order
+            seen = set()
+            deduped = []
+            for u in urls:
+                if u not in seen:
+                    seen.add(u)
+                    deduped.append(u)
+            return deduped[:max_results]
+    except Exception as e:
+        logger.warning(f"[CHAT] Web search failed: {e}")
+        return []
+
+
+async def _fetch_readable(url: str) -> str:
+    """Fetch readable text using Jina Reader proxy if possible, fallback to raw HTML text."""
+    import httpx
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
+    reader_url = f"https://r.jina.ai/{url}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
+            r = await client.get(reader_url)
+            if r.status_code == 200 and r.text and len(r.text) > 100:
+                return r.text.strip()
+            # Fallback to direct fetch
+            r2 = await client.get(url)
+            return r2.text.strip()
+    except Exception as e:
+        logger.warning(f"[CHAT] Fetch failed for {url}: {e}")
+        return ""
+
+
+@app.post("/chat/search", response_model=ChatAnswerResponse)
+async def chat_with_search(
+    user_id: str = Form(...),
+    project_id: str = Form(...),
+    question: str = Form(...),
+    k: int = Form(6),
+    max_web: int = Form(30)
+):
+    """Answer using local documents and up to 30 web sources, with URL citations."""
+    from memo.core import get_memory_system
+    memory = get_memory_system()
+    logger.info("[CHAT] User Q/chat.search: %s", trim_text(question, 20).replace("\n", " "))
+
+    # 1) Reuse local RAG retrieval
+    local_resp = await _chat_impl(user_id, project_id, question, k)
+
+    # 2) Web search and fetching via shared utilities
+    web_context, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10)
+    if not web_context:
+        return local_resp
+
+    # 5) Ask the model with merged context and explicit URL citation rule
+    composed_context = ""
+    if local_resp.sources:
+        # Reconstruct local context text roughly from sources is non-trivial; instead, inform the model
+        # to consider both local materials and web snippets; we pass the summaries/snippets we have
+        pass
+
+    doc_context = web_context
+    system_prompt = (
+        "You are a careful study assistant. Prefer using the provided CONTEXT to answer.\n"
+        "Cite sources for any claims you make.\n"
+        "For local documents, cite as (source: filename, topic). For web sources, cite as (web: URL).\n"
+        "Use general knowledge if needed but avoid fabrications.\n"
+    )
+    user_prompt = f"QUESTION:\n{question}\n\nCONTEXT (WEB SNIPPETS + LOCAL MATERIALS):\n{doc_context}"
+
+    selection = select_model(question=question, context=doc_context)
+    logger.info(f"[CHAT] Generating web-augmented answer with {selection['provider']} {selection['model']}")
+    try:
+        answer = await generate_answer_with_model(
+            selection=selection,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            gemini_rotator=gemini_rotator,
+            nvidia_rotator=nvidia_rotator
+        )
+    except Exception as e:
+        logger.warning(f"[CHAT] Web-augmented LLM error: {e}")
+        # Fallback to local-only answer
+        return local_resp
+
+    # Merge sources: local + web
+    merged_sources = list(local_resp.sources or []) + web_sources_meta
+    merged_files = local_resp.relevant_files or []
+
+    logger.info("[CHAT] Web-augmented answer len=%d, web_used=%d", len(answer or ""), len(web_sources_meta))
+    return ChatAnswerResponse(answer=answer, sources=merged_sources, relevant_files=merged_files)

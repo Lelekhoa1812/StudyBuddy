@@ -519,6 +519,12 @@
         form.append('outline_words', '200');
         form.append('report_words', '1200');
         form.append('instructions', question);
+        // If Search is toggled on, enable web augmentation for report
+        const useWeb = searchLink && searchLink.classList.contains('active');
+        if (useWeb) {
+          form.append('use_web', '1');
+          form.append('max_web', '20');
+        }
         const response = await fetch('/report', { method: 'POST', body: form });
         const data = await response.json();
         if (response.ok) {
@@ -536,6 +542,12 @@
         formData.append('project_id', currentProject.project_id);
         formData.append('question', question);
         formData.append('k', '6');
+        // If Search is toggled on, enable web augmentation
+        const useWeb = searchLink && searchLink.classList.contains('active');
+        if (useWeb) {
+          formData.append('use_web', '1');
+          formData.append('max_web', '30');
+        }
         const response = await fetch('/chat', { method: 'POST', body: formData });
         const data = await response.json();
         if (response.ok) {
@@ -632,6 +644,12 @@
       form.append('outline_words', '200');
       form.append('report_words', '1200');
       form.append('instructions', instructions);
+      // Respect Search toggle when using quick report button
+      const useWeb = searchLink && searchLink.classList.contains('active');
+      if (useWeb) {
+        form.append('use_web', '1');
+        form.append('max_web', '20');
+      }
       const res = await fetch('/report', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Report failed');

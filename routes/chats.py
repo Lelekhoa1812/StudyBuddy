@@ -7,7 +7,7 @@ from fastapi import Form, HTTPException
 from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator, nvidia_rotator
 from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse
 from utils.service.common import trim_text
-from .search import build_web_context
+from .search import build_web_context, plan_and_build_web_context
 from utils.api.router import select_model, generate_answer_with_model
 
 
@@ -409,7 +409,10 @@ async def _chat_impl(
     web_sources_meta: List[Dict[str, Any]] = []
     if use_web:
         try:
-            web_context_block, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10)
+            # Use planner to avoid redundant fetching and improve coverage
+            web_context_block, web_sources_meta = await plan_and_build_web_context(
+                question, max_web=max_web, per_query=6, top_k=12, dedup_threshold=0.90
+            )
         except Exception as e:
             logger.warning(f"[CHAT] Web augmentation failed: {e}")
 

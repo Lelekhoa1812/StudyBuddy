@@ -1,7 +1,9 @@
 # routes/search.py
-import re, asyncio, time
+import re, asyncio, time, json
 from typing import List, Dict, Any, Tuple
 from helpers.setup import logger, embedder, gemini_rotator, nvidia_rotator
+from utils.api.router import select_model, generate_answer_with_model
+from utils.service.summarizer import llama_summarize
 
 
 async def duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
@@ -114,3 +116,158 @@ async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -
     return composed, web_sources_meta
 
 
+
+# ────────────────────────────── LLM-Enhanced Search Planning ──────────────────
+async def generate_query_variations_llm(question: str, max_variations: int = 5) -> List[str]:
+    """Use NVIDIA small model to expand queries for better recall."""
+    system = (
+        "You are an expert at query expansion and reformulation. Given a user question, "
+        "produce 3-5 alternative ways to phrase it for web search.\n"
+        "Focus on synonyms, technical terms, broader/narrower scopes.\n"
+        "Return one variation per line, no numbering."
+    )
+    user = f"Original question: {question}\n\nVariations:"
+    try:
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        text = await generate_answer_with_model(selection, system, user, gemini_rotator, nvidia_rotator)
+        variations = [v.strip() for v in text.split('\n') if v.strip()]
+        uniq = []
+        seen = set()
+        for v in variations:
+            k = v.lower()
+            if k not in seen:
+                seen.add(k)
+                uniq.append(v)
+        if question not in uniq:
+            uniq.insert(0, question)
+        return uniq[:max_variations]
+    except Exception as e:
+        logger.warning(f"[SEARCH] LLM variations failed: {e}")
+        return [question]
+
+
+async def plan_subqueries(question: str) -> List[str]:
+    """Plan sub-queries using NVIDIA for simple, Gemini for complex questions."""
+    selection = select_model(question=question, context=question)
+    system = (
+        "You are a planning agent. Break the user's question into 3-6 focused sub-queries "
+        "that, when searched separately, will comprehensively answer the question.\n"
+        "Return a JSON array of strings only."
+    )
+    user = f"Question: {question}\nReturn JSON array only."
+    try:
+        text = await generate_answer_with_model(selection, system, user, gemini_rotator, nvidia_rotator)
+        try:
+            arr = json.loads(text)
+            if isinstance(arr, list) and all(isinstance(x, str) for x in arr):
+                out = []
+                seen = set()
+                for q in arr:
+                    k = q.strip().lower()
+                    if k and k not in seen:
+                        seen.add(k)
+                        out.append(q.strip())
+                if out:
+                    return out[:6]
+        except json.JSONDecodeError:
+            pass
+        return await generate_query_variations_llm(question, max_variations=5)
+    except Exception as e:
+        logger.warning(f"[SEARCH] Planning failed, using variations: {e}")
+        return await generate_query_variations_llm(question, max_variations=5)
+
+
+def _cosine_similarity(a, b):
+    import numpy as np
+    denom = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
+    return float(np.dot(a, b) / denom)
+
+
+async def plan_and_build_web_context(question: str, max_web: int = 30, per_query: int = 6, top_k: int = 12,
+                                     dedup_threshold: float = 0.90) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Plan sub-queries with LLM, search/fetch per sub-query, summarize and deduplicate
+    semantically similar snippets, and return fused context + sources.
+    - max_web: total budget across all sub-queries
+    - per_query: max URLs per sub-query
+    - top_k: final number of fused snippets to keep
+    - dedup_threshold: cosine similarity threshold to drop near-duplicates
+    """
+    import numpy as np
+    subqueries = await plan_subqueries(question)
+    if not subqueries:
+        subqueries = [question]
+
+    per_q = max(3, min(per_query, max_web // max(1, len(subqueries))))
+
+    snippets: List[Tuple[float, str, Dict[str, Any]]] = []  # (score, text, meta)
+    q_vec = np.array(embedder.embed([question])[0], dtype="float32")
+
+    for sq in subqueries:
+        urls = await duckduckgo_search(sq, max_results=per_q)
+        if not urls:
+            continue
+
+        async def _fetch(u: str):
+            txt = await fetch_readable(u)
+            return u, txt
+
+        tasks = [asyncio.create_task(_fetch(u)) for u in urls]
+        fetched = await asyncio.gather(*tasks)
+        web_docs = [(u, t) for (u, t) in fetched if t and len(t) > 200]
+        if not web_docs:
+            continue
+
+        for url, text in web_docs:
+            try:
+                summary = await llama_summarize(text[:6000], max_sentences=4)
+            except Exception:
+                summary = text[:1000]
+            v = np.array(embedder.embed([summary])[0], dtype="float32")
+            sim = _cosine_similarity(q_vec, v)
+            meta = {"url": url, "topic_name": summary.split('\n')[0][:120], "score": float(sim), "kind": "web"}
+            snippets.append((sim, summary, meta))
+
+    if not snippets:
+        return "", []
+
+    # Deduplicate by URL and semantic similarity
+    snippets.sort(key=lambda x: x[0], reverse=True)
+    kept_texts: List[str] = []
+    kept_vecs: List[List[float]] = []
+    kept_meta: List[Dict[str, Any]] = []
+    seen_urls = set()
+    for score, text, meta in snippets:
+        url = meta.get("url")
+        if url in seen_urls:
+            continue
+        v = embedder.embed([text])[0]
+        is_dup = False
+        for kv in kept_vecs:
+            if _cosine_similarity(np.array(v, dtype="float32"), np.array(kv, dtype="float32")) >= dedup_threshold:
+                is_dup = True
+                break
+        if is_dup:
+            continue
+        seen_urls.add(url)
+        kept_texts.append(text)
+        kept_vecs.append(v)
+        kept_meta.append(meta)
+        if len(kept_texts) >= top_k:
+            break
+
+    # Fused intro summary
+    try:
+        fused_intro = await llama_summarize("\n\n".join(kept_texts)[:10000], max_sentences=5)
+    except Exception:
+        fused_intro = ""
+
+    from utils.service.common import trim_text
+    blocks = []
+    if fused_intro:
+        blocks.append(f"[WEB_FUSED_SUMMARY] {trim_text(fused_intro, 1800)}")
+    for text, meta in zip(kept_texts, kept_meta):
+        title_line = (text.splitlines()[0][:120] if text else meta.get("topic_name", "Web")).strip()
+        blocks.append(f"[WEB: {title_line}] {trim_text(text, 2000)}")
+    composed = "\n\n---\n\n".join(blocks)
+    return composed, kept_meta

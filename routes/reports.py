@@ -4,7 +4,7 @@ from typing import List, Dict
 from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, gemini_rotator, nvidia_rotator
-from .search import build_web_context
+from .search import build_web_context, plan_and_build_web_context
 from helpers.models import ReportResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
@@ -54,7 +54,9 @@ async def generate_report(
     web_context_block = ""
     web_sources_meta: List[Dict] = []
     if use_web:
-        web_context_block, web_sources_meta = await build_web_context(instructions or query_text, max_web=max_web, top_k=10)
+        web_context_block, web_sources_meta = await plan_and_build_web_context(
+            instructions or query_text, max_web=max_web, per_query=6, top_k=12, dedup_threshold=0.90
+        )
     file_summary = doc_sum.get("summary", "")
 
     from utils.api.router import GEMINI_MED, GEMINI_PRO

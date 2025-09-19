@@ -18,7 +18,8 @@ async def save_chat_message(
     role: str = Form(...),
     content: str = Form(...),
     timestamp: Optional[float] = Form(None),
-    sources: Optional[str] = Form(None)
+    sources: Optional[str] = Form(None),
+    is_report: Optional[int] = Form(0)
 ):
     """Save a chat message to the session"""
     if role not in ["user", "assistant"]:
@@ -41,7 +42,8 @@ async def save_chat_message(
         "content": content,
         "timestamp": timestamp or time.time(),
         "created_at": datetime.now(timezone.utc),
-        **({"sources": parsed_sources} if parsed_sources is not None else {})
+        **({"sources": parsed_sources} if parsed_sources is not None else {}),
+        "is_report": bool(is_report or 0)
     }
     
     rag.db["chat_sessions"].insert_one(message)
@@ -64,7 +66,8 @@ async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
             content=message["content"],
             timestamp=message["timestamp"],
             created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"]),
-            sources=message.get("sources")
+            sources=message.get("sources"),
+            is_report=bool(message.get("is_report", False))
         ))
     
     return ChatHistoryResponse(messages=messages)

@@ -22,6 +22,7 @@ class ChatMessageResponse(BaseModel):
     timestamp: float
     created_at: str
     sources: Optional[List[Dict[str, Any]]] = None
+    is_report: Optional[bool] = False
 
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]

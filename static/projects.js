@@ -278,7 +278,8 @@
         // Load chat history using global markdown-aware renderer
         messages.forEach(msg => {
           if (typeof window.appendMessage === 'function') {
-            window.appendMessage(msg.role, msg.content);
+            const isReport = !!msg.is_report;
+            window.appendMessage(msg.role, msg.content, isReport);
             if (msg.role === 'assistant' && Array.isArray(msg.sources) && msg.sources.length) {
               if (typeof window.appendSources === 'function') {
                 window.appendSources(msg.sources);

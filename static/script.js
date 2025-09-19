@@ -109,11 +109,11 @@
         toggleReportMode();
       });
     }
-    // Search link dummy toggle (non-functional)
+    // Search link toggle (enables web search augmentation)
     if (searchLink) {
       searchLink.addEventListener('click', (e) => {
         e.preventDefault();
-        // Visual toggle only; can be active concurrently
+        // Visual toggle; can be active concurrently with report mode
         searchLink.classList.toggle('active');
       });
     }

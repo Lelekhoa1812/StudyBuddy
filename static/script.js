@@ -15,6 +15,7 @@
   const chatHint = document.getElementById('chat-hint');
   const messages = document.getElementById('messages');
   const reportLink = document.getElementById('report-link');
+  const searchLink = document.getElementById('search-link');
   const loadingOverlay = document.getElementById('loading-overlay');
   const loadingMessage = document.getElementById('loading-message');
   
@@ -106,6 +107,14 @@
       reportLink.addEventListener('click', (e) => {
         e.preventDefault();
         toggleReportMode();
+      });
+    }
+    // Search link dummy toggle (non-functional)
+    if (searchLink) {
+      searchLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Visual toggle only; can be active concurrently
+        searchLink.classList.toggle('active');
       });
     }
   }

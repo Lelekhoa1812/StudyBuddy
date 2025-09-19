@@ -973,16 +973,43 @@
   margin-top: 6px;
 }
 
-.report-link {
-  color: var(--muted);
-  text-decoration: underline;
-  cursor: pointer;
-  user-select: none;
+/* Action pills row */
+.action-pills {
+  display: flex;
+  gap: 12px;
 }
 
-.report-link.active {
-  color: var(--accent);
-  font-weight: 600;
+.action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-pill:hover {
+  background: var(--card-hover);
+  border-color: var(--border-light);
+}
+
+.action-pill svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.action-pill.active {
+  background: var(--gradient-accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: var(--shadow);
 }
 
 #question:focus {

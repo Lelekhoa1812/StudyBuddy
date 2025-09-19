@@ -9,28 +9,59 @@ from utils.service.summarizer import llama_summarize
 async def duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
     """Lightweight DuckDuckGo HTML search scraper returning result URLs."""
     import httpx
+    from urllib.parse import urlparse, parse_qs, unquote
     urls: List[str] = []
     try:
         t0 = time.perf_counter()
         q = re.sub(r"\s+", "+", (query or "").strip())
         if not q:
             return []
-        search_url = f"https://duckduckgo.com/html/?q={q}"
+        # Use lite HTML endpoint directly to avoid 302 and heavier markup
+        search_url = f"https://html.duckduckgo.com/html/?q={q}"
         headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
             r = await client.get(search_url)
             html = r.text
-            for m in re.finditer(r'<a[^>]+class=\"result__a[^\"]*\"[^>]+href=\"(https?://[^\"]+)\"', html):
-                url = m.group(1)
+            # First, capture anchors with DDG result classes
+            for m in re.finditer(r'<a[^>]+class="([^"]*result__a[^"]*)"[^>]+href="([^"]+)"', html):
+                href = m.group(2)
+                # DDG often wraps URLs like /l/?kh=1&uddg=<encoded>
+                if href.startswith('/l/?'):
+                    try:
+                        parsed = urlparse(href)
+                        uddg = parse_qs(parsed.query).get('uddg', [])
+                        if uddg:
+                            url = unquote(uddg[0])
+                        else:
+                            continue
+                    except Exception:
+                        continue
+                else:
+                    url = href
                 if "duckduckgo.com" in url:
                     continue
-                urls.append(url)
+                if url.startswith('http'):
+                    urls.append(url)
+            # Fallback: capture any anchor with href and try to unwrap uddg
             if len(urls) < max_results:
-                for m in re.finditer(r'<a[^>]+href=\"(https?://[^\"]+)\"', html):
-                    url = m.group(1)
+                for m in re.finditer(r'<a[^>]+href="([^"]+)"', html):
+                    href = m.group(1)
+                    if href.startswith('/l/?'):
+                        try:
+                            parsed = urlparse(href)
+                            uddg = parse_qs(parsed.query).get('uddg', [])
+                            if uddg:
+                                url = unquote(uddg[0])
+                            else:
+                                continue
+                        except Exception:
+                            continue
+                    else:
+                        url = href
                     if "duckduckgo.com" in url:
                         continue
-                    urls.append(url)
+                    if url.startswith('http'):
+                        urls.append(url)
             seen = set()
             deduped = []
             for u in urls:
@@ -134,7 +165,15 @@ async def generate_query_variations_llm(question: str, max_variations: int = 5) 
     try:
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
         text = await generate_answer_with_model(selection, system, user, gemini_rotator, nvidia_rotator)
-        variations = [v.strip() for v in text.split('\n') if v.strip()]
+        # Remove meta lines like "Here are ..." or numbering
+        raw_lines = [v.strip() for v in text.split('\n') if v.strip()]
+        variations = []
+        for v in raw_lines:
+            if re.match(r"^(here (are|is)|i suggest|variations|alternative|possible queries)\b", v.strip().lower()):
+                continue
+            v = re.sub(r"^[-*\d\.\)\s]+", "", v).strip()
+            if len(v) >= 8:
+                variations.append(v)
         uniq = []
         seen = set()
         for v in variations:

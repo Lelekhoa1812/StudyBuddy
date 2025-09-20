@@ -98,17 +98,64 @@ async def search_engine_query(keywords: List[str], max_results: int = 30) -> Lis
     try:
         # Create search query from keywords
         query = " ".join(keywords)
-        search_url = f"https://html.duckduckgo.com/html/?q={query}"
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
-            r = await client.get(search_url)
-            html = r.text
+        # Try multiple DuckDuckGo endpoints
+        search_urls = [
+            f"https://html.duckduckgo.com/html/?q={query}",
+            f"https://duckduckgo.com/html/?q={query}",
+            f"https://duckduckgo.com/?q={query}",
+        ]
+        
+        html = ""
+        for search_url in search_urls:
+            try:
+                async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
+                    r = await client.get(search_url)
+                    if r.status_code == 200:
+                        html = r.text
+                        logger.info(f"[SEARCH] Successfully fetched from: {search_url}")
+                        break
+            except Exception as e:
+                logger.warning(f"[SEARCH] Failed to fetch from {search_url}: {e}")
+                continue
+        
+        if not html:
+            logger.error("[SEARCH] Failed to fetch from all DuckDuckGo endpoints")
+            return []
+        
+        # Debug: Log a sample of the HTML to see the structure
+        logger.info(f"[SEARCH] HTML sample (first 2000 chars): {html[:2000]}")
+        
+        # Multiple regex patterns to try for different DuckDuckGo layouts
+        patterns = [
+            # Pattern 1: Modern DuckDuckGo result structure
+            r'<a[^>]+href="([^"]+)"[^>]*class="[^"]*result__a[^"]*"[^>]*>([^<]+)</a>',
+            # Pattern 2: Alternative result structure
+            r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([^<]+)</a>',
+            # Pattern 3: General result class
+            r'<a[^>]+href="([^"]+)"[^>]*class="[^"]*result[^"]*"[^>]*>([^<]+)</a>',
+            # Pattern 4: Any link with href containing http (fallback)
+            r'<a[^>]+href="(https?://[^"]+)"[^>]*>([^<]+)</a>',
+            # Pattern 5: More flexible pattern
+            r'<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>',
+        ]
+        
+        for pattern_idx, pattern in enumerate(patterns):
+            logger.info(f"[SEARCH] Trying pattern {pattern_idx + 1}: {pattern}")
+            matches = list(re.finditer(pattern, html))
+            logger.info(f"[SEARCH] Pattern {pattern_idx + 1} found {len(matches)} matches")
             
-            # Extract results with titles and URLs
-            for m in re.finditer(r'<a[^>]+class="([^"]*result__a[^"]*)"[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', html):
-                href = m.group(2)
-                title = m.group(3).strip()
+            for match in matches:
+                href = match.group(1)
+                title = match.group(2).strip()
+                
+                logger.info(f"[SEARCH] Found match - href: {href[:100]}, title: {title[:50]}")
+                
+                # Skip if title is too short or contains only symbols
+                if len(title) < 3 or not re.search(r'[a-zA-Z]', title):
+                    logger.info(f"[SEARCH] Skipping due to short/invalid title: {title}")
+                    continue
                 
                 # Handle DuckDuckGo URL unwrapping
                 if href.startswith('/l/?'):
@@ -117,51 +164,44 @@ async def search_engine_query(keywords: List[str], max_results: int = 30) -> Lis
                         uddg = parse_qs(parsed.query).get('uddg', [])
                         if uddg:
                             url = unquote(uddg[0])
+                            logger.info(f"[SEARCH] Unwrapped URL: {url[:100]}")
                         else:
+                            logger.info(f"[SEARCH] No uddg param found in: {href}")
                             continue
-                    except Exception:
+                    except Exception as e:
+                        logger.info(f"[SEARCH] URL unwrapping failed: {e}")
                         continue
                 else:
                     url = href
                 
-                if "duckduckgo.com" in url or not title or not url.startswith('http'):
+                # Skip DuckDuckGo internal links and invalid URLs
+                if ("duckduckgo.com" in url or 
+                    not url.startswith('http') or 
+                    not title or
+                    any(r["url"] == url for r in results)):
+                    logger.info(f"[SEARCH] Skipping URL: {url[:100]} (duckduckgo={('duckduckgo.com' in url)}, http={url.startswith('http')}, duplicate={any(r['url'] == url for r in results)})")
                     continue
-                    
+                
+                logger.info(f"[SEARCH] Adding result: {url[:100]} - {title[:50]}")
                 results.append({
                     "url": url,
                     "title": title,
                     "keywords": keywords
                 })
+                
+                # Stop if we have enough results
+                if len(results) >= max_results:
+                    break
             
-            # Fallback: extract any links if we didn't get enough results
-            if len(results) < max_results:
-                for m in re.finditer(r'<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', html):
-                    href = m.group(1)
-                    title = m.group(2).strip()
-                    
-                    if href.startswith('/l/?'):
-                        try:
-                            parsed = urlparse(href)
-                            uddg = parse_qs(parsed.query).get('uddg', [])
-                            if uddg:
-                                url = unquote(uddg[0])
-                            else:
-                                continue
-                        except Exception:
-                            continue
-                    else:
-                        url = href
-                    
-                    if "duckduckgo.com" in url or not title or not url.startswith('http') or any(r["url"] == url for r in results):
-                        continue
-                        
-                    results.append({
-                        "url": url,
-                        "title": title,
-                        "keywords": keywords
-                    })
-            
-            return results[:max_results]
+            # If we found results with this pattern, stop trying others
+            if results:
+                break
+        
+        logger.info(f"[SEARCH] Final results: {len(results)} URLs found")
+        for i, result in enumerate(results[:5]):  # Log first 5 results
+            logger.info(f"[SEARCH] Result {i+1}: {result['title'][:50]}... -> {result['url']}")
+        
+        return results[:max_results]
             
     except Exception as e:
         logger.warning(f"[SEARCH] Search engine query failed: {e}")
@@ -560,13 +600,11 @@ async def calculate_comprehensive_score(content: str, user_query: str, url: str,
 
 async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
     """
-    Enhanced intelligent web search and content processing:
+    Intelligent web search and content processing:
     1. Extract intelligent search keywords
-    2. Generate multiple search strategies
-    3. Execute multi-strategy search
-    4. Advanced content processing with quality assessment
-    5. Cross-validation and comprehensive scoring
-    6. Hierarchical knowledge structuring
+    2. Search for multiple results
+    3. Process each source with NVIDIA agent
+    4. Structure knowledge for final prompt
     """
     t0 = time.perf_counter()
     
@@ -577,105 +615,49 @@ async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -
     if not keywords:
         return "", []
     
-    # Step 2: Generate multiple search strategies
-    strategies = await generate_search_strategies(question, nvidia_rotator)
-    logger.info(f"[SEARCH] Generated {len(strategies)} search strategies")
-    
-    # Step 3: Execute multi-strategy search
-    search_results = await multi_strategy_search(strategies, max_results_per_strategy=max_web // len(strategies))
-    logger.info(f"[SEARCH] Found {len(search_results)} search results across strategies")
+    # Step 2: Search for multiple results
+    search_results = await search_engine_query(keywords, max_results=max_web)
+    logger.info(f"[SEARCH] Found {len(search_results)} search results")
     
     if not search_results:
         return "", []
     
-    # Step 3: Advanced content processing with quality assessment
+    # Step 3: Process each source with NVIDIA agent
     processing_tasks = []
     for result in search_results:
-        task = fetch_and_process_content_enhanced(result["url"], result["title"], question, nvidia_rotator)
+        task = fetch_and_process_content(result["url"], result["title"], question, nvidia_rotator)
         processing_tasks.append(task)
     
     processed_results = await asyncio.gather(*processing_tasks)
     
-    # Step 4: Cross-validation and comprehensive scoring
-    relevant_contents = [r["relevant_content"] for r in processed_results if r["relevant_content"]]
+    # Step 4: Filter and rank by relevance
+    relevant_results = [r for r in processed_results if r["relevance_score"] > 0.1 and r["relevant_content"]]
+    relevant_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    top_results = relevant_results[:top_k]
     
-    enhanced_results = []
-    for result in processed_results:
-        if not result["relevant_content"]:
-            continue
-            
-        # Cross-validate with other sources
-        other_contents = [c for c in relevant_contents if c != result["relevant_content"]]
-        consistency_assessment = await cross_validate_information(
-            result["relevant_content"], other_contents, nvidia_rotator
-        )
-        
-        # Calculate comprehensive score
-        comprehensive_score = await calculate_comprehensive_score(
-            result["relevant_content"], question, result["url"], result["title"],
-            result.get("quality_assessment", {}), consistency_assessment
-        )
-        
-        enhanced_result = {
-            **result,
-            "comprehensive_score": comprehensive_score,
-            "consistency_assessment": consistency_assessment
-        }
-        enhanced_results.append(enhanced_result)
+    logger.info(f"[SEARCH] Processed {len(relevant_results)} relevant results, using top {len(top_results)} in {time.perf_counter() - t0:.2f}s")
     
-    # Step 5: Filter and rank by comprehensive score
-    enhanced_results.sort(key=lambda x: x["comprehensive_score"], reverse=True)
-    top_results = enhanced_results[:top_k]
-    
-    logger.info(f"[SEARCH] Processed {len(enhanced_results)} enhanced results, using top {len(top_results)} in {time.perf_counter() - t0:.2f}s")
-    
-    # Step 6: Hierarchical knowledge structuring
+    # Step 5: Structure knowledge for final prompt
     web_contexts = []
     web_sources_meta = []
     
-    # Group results by strategy for better organization
-    strategy_groups = {}
     for result in top_results:
-        strategy = result.get("strategy", "unknown")
-        if strategy not in strategy_groups:
-            strategy_groups[strategy] = []
-        strategy_groups[strategy].append(result)
-    
-    # Create hierarchical context structure
-    for strategy, results in strategy_groups.items():
-        if not results:
-            continue
-            
-        # Strategy header
-        strategy_header = f"[{strategy.upper()} SOURCES]"
-        web_contexts.append(strategy_header)
+        # Create structured context entry
+        context_entry = f"[WEB SOURCE: {result['title']}]\n"
+        context_entry += f"URL: {result['url']}\n"
+        context_entry += f"Summary: {result['summary']}\n"
+        context_entry += f"Relevant Content: {result['relevant_content'][:1500]}..."
         
-        for i, result in enumerate(results, 1):
-            # Create detailed context entry
-            context_entry = f"[{i}. {result['title']}]\n"
-            context_entry += f"URL: {result['url']}\n"
-            context_entry += f"Authority: {result.get('authority_score', 0.5):.2f}\n"
-            context_entry += f"Quality: {result.get('quality_assessment', {}).get('quality_score', 0.5):.2f}\n"
-            context_entry += f"Freshness: {result.get('freshness_score', 0.5):.2f}\n"
-            context_entry += f"Consistency: {result.get('consistency_assessment', {}).get('consistency_score', 0.5):.2f}\n"
-            context_entry += f"Summary: {result['summary']}\n"
-            context_entry += f"Relevant Content: {result['relevant_content'][:1200]}..."
-            
-            web_contexts.append(context_entry)
-            
-            # Create enhanced source metadata
-            web_sources_meta.append({
-                "url": result["url"],
-                "topic_name": result["title"],
-                "score": float(result["comprehensive_score"]),
-                "kind": "web",
-                "summary": result["summary"],
-                "strategy": strategy,
-                "authority_score": result.get("authority_score", 0.5),
-                "quality_score": result.get("quality_assessment", {}).get("quality_score", 0.5),
-                "freshness_score": result.get("freshness_score", 0.5),
-                "consistency_score": result.get("consistency_assessment", {}).get("consistency_score", 0.5)
-            })
+        web_contexts.append(context_entry)
+        
+        # Create source metadata
+        web_sources_meta.append({
+            "url": result["url"],
+            "topic_name": result["title"],
+            "score": float(result["relevance_score"]),
+            "kind": "web",
+            "summary": result["summary"]
+        })
     
     composed_context = "\n\n---\n\n".join(web_contexts)
     return composed_context, web_sources_meta

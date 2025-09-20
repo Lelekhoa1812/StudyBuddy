@@ -75,7 +75,22 @@ async def generate_report(
             logger.info(f"[REPORT] Raw filter response: {filter_response}")
             import json as _json
             try:
-                filter_data = _json.loads(filter_response)
+                # Extract JSON from markdown code blocks if present
+                json_text = filter_response.strip()
+                if json_text.startswith('```json'):
+                    # Remove markdown code block formatting
+                    json_text = json_text[7:]  # Remove ```json
+                    if json_text.endswith('```'):
+                        json_text = json_text[:-3]  # Remove ```
+                    json_text = json_text.strip()
+                elif json_text.startswith('```'):
+                    # Remove generic code block formatting
+                    json_text = json_text[3:]  # Remove ```
+                    if json_text.endswith('```'):
+                        json_text = json_text[:-3]  # Remove ```
+                    json_text = json_text.strip()
+                
+                filter_data = _json.loads(json_text)
                 relevant_chunk_ids = filter_data.get("relevant_chunks", [])
                 focus_areas = filter_data.get("focus_areas", [])
                 logger.info(f"[REPORT] Content filtering identified {len(relevant_chunk_ids)} relevant chunks: {relevant_chunk_ids} and focus areas: {focus_areas}")

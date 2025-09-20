@@ -6,6 +6,7 @@ import tempfile
 import markdown
 import re
 from datetime import datetime
+from typing import List, Dict
 from fastapi import HTTPException
 from utils.logger import get_logger
 
@@ -507,7 +508,70 @@ def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
 
     return out
 
-async def generate_report_pdf(report_content: str, user_id: str, project_id: str) -> bytes:
+
+async def _format_references_ieee(sources: List[Dict]) -> List[str]:
+    """Format sources in IEEE citation style using NVIDIA API."""
+    try:
+        from utils.api.router import generate_answer_with_model
+        from helpers.setup import nvidia_rotator
+        
+        if not sources or not nvidia_rotator:
+            return []
+        
+        # Prepare source data for formatting
+        source_data = []
+        for i, source in enumerate(sources, 1):
+            source_info = {
+                "number": i,
+                "filename": source.get("filename", "Unknown"),
+                "url": source.get("url", ""),
+                "topic_name": source.get("topic_name", ""),
+                "kind": source.get("kind", "document")
+            }
+            source_data.append(source_info)
+        
+        sys_prompt = """You are an expert at formatting academic references in IEEE style.
+Format the provided sources as IEEE-style references. Each reference should be numbered and formatted according to IEEE standards.
+
+For web sources: [1] Author/Organization, "Title," Website Name, URL, accessed: Date.
+For documents: [1] Author, "Title," Document Type, Filename, Year.
+
+Return only the formatted references, one per line, numbered sequentially."""
+        
+        user_prompt = f"Format these sources in IEEE style:\n\n{source_data}"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        # Parse the response into individual references
+        references = [line.strip() for line in response.split('\n') if line.strip() and line.strip().startswith('[')]
+        
+        # If NVIDIA formatting fails, create basic IEEE format
+        if not references:
+            references = []
+            for i, source in enumerate(sources, 1):
+                if source.get("kind") == "web":
+                    ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Web Source')}\", {source.get('url', '')}, accessed: {datetime.now().strftime('%B %d, %Y')}."
+                else:
+                    ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Document')}\", Document, {datetime.now().year}."
+                references.append(ref)
+        
+        return references
+        
+    except Exception as e:
+        logger.warning(f"[PDF] IEEE reference formatting failed: {e}")
+        # Fallback to basic formatting
+        references = []
+        for i, source in enumerate(sources, 1):
+            if source.get("kind") == "web":
+                ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Web Source')}\", {source.get('url', '')}, accessed: {datetime.now().strftime('%B %d, %Y')}."
+            else:
+                ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Document')}\", Document, {datetime.now().year}."
+            references.append(ref)
+        return references
+
+
+async def generate_report_pdf(report_content: str, user_id: str, project_id: str, sources: List[Dict] = None) -> bytes:
     """
     Generate a PDF from report content using reportlab
     
@@ -622,6 +686,18 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
         
         # Enhanced markdown parser with proper formatting
         story.extend(_parse_markdown_content(report_content, heading1_style, heading2_style, heading3_style, normal_style, code_style))
+        
+        # Add references section if sources provided
+        if sources:
+            story.append(PageBreak())
+            story.append(Paragraph("References", heading1_style))
+            story.append(Spacer(1, 12))
+            
+            # Format references in IEEE style using NVIDIA API
+            ieee_references = await _format_references_ieee(sources)
+            for ref in ieee_references:
+                story.append(Paragraph(ref, normal_style))
+                story.append(Spacer(1, 6))
         
         # Build PDF
         doc.build(story)

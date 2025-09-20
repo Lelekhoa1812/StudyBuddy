@@ -859,10 +859,14 @@
     `;
 
     try {
+      // Find sources from the current message or recent sources
+      const sources = findCurrentSources();
+      
       const formData = new FormData();
       formData.append('user_id', user.user_id);
       formData.append('project_id', currentProject.project_id);
       formData.append('report_content', reportContent);
+      formData.append('sources', JSON.stringify(sources));
 
       const response = await fetch('/report/pdf', {
         method: 'POST',

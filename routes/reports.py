@@ -152,12 +152,22 @@ async def generate_report(
 async def generate_report_pdf(
     user_id: str = Form(...),
     project_id: str = Form(...),
-    report_content: str = Form(...)
+    report_content: str = Form(...),
+    sources: str = Form("[]")
 ):
     from utils.service.pdf import generate_report_pdf as generate_pdf
     from fastapi.responses import Response
+    import json
     try:
-        pdf_content = await generate_pdf(report_content, user_id, project_id)
+        # Parse sources JSON
+        sources_list = []
+        if sources and sources != "[]":
+            try:
+                sources_list = json.loads(sources)
+            except json.JSONDecodeError:
+                logger.warning(f"[REPORT] Failed to parse sources JSON: {sources}")
+        
+        pdf_content = await generate_pdf(report_content, user_id, project_id, sources_list)
         return Response(
             content=pdf_content,
             media_type="application/pdf",

@@ -935,9 +935,44 @@
     sourcesDiv.innerHTML = `<strong>Sources:</strong> ${sourcesList}`;
     messages.appendChild(sourcesDiv);
     
+    // Store sources for PDF generation
+    window.__sb_current_sources = sources;
+    
     requestAnimationFrame(() => {
       sourcesDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
+  }
+
+  function findCurrentSources() {
+    // Try to get sources from the current message context
+    if (window.__sb_current_sources) {
+      return window.__sb_current_sources;
+    }
+    
+    // Fallback: look for sources in the last assistant message
+    const lastAssistantMsg = Array.from(messages.children).reverse().find(msg => 
+      msg.classList.contains('msg') && msg.classList.contains('assistant')
+    );
+    
+    if (lastAssistantMsg) {
+      const sourcesDiv = lastAssistantMsg.nextElementSibling;
+      if (sourcesDiv && sourcesDiv.classList.contains('sources')) {
+        // Extract sources from the DOM (this is a fallback)
+        const pills = sourcesDiv.querySelectorAll('.pill');
+        const sources = Array.from(pills).map(pill => {
+          const text = pill.textContent;
+          const parts = text.split(' • ');
+          return {
+            filename: parts[0] || 'Unknown',
+            topic_name: parts[1] || '',
+            score: 0.0
+          };
+        });
+        return sources;
+      }
+    }
+    
+    return [];
   }
 
   function showButtonLoading(button, isLoading) {

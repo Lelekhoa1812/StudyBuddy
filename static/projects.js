@@ -283,6 +283,8 @@
             if (msg.role === 'assistant' && Array.isArray(msg.sources) && msg.sources.length) {
               if (typeof window.appendSources === 'function') {
                 window.appendSources(msg.sources);
+                // Store sources for PDF generation
+                window.__sb_current_sources = msg.sources;
               }
             }
           } else {
@@ -298,6 +300,8 @@
               srcDiv.className = 'sources';
               srcDiv.textContent = 'Sources: ' + msg.sources.map(s => s.filename).join(', ');
               messagesContainer.appendChild(srcDiv);
+              // Store sources for PDF generation
+              window.__sb_current_sources = msg.sources;
             }
           }
         });

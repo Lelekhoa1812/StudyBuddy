@@ -181,7 +181,11 @@ async def multi_strategy_search(strategies: List[Dict[str, Any]], max_results_pe
         if not query:
             continue
             
-        keywords = query.split()
+        # Extract keywords from the strategy query
+        keywords = await extract_search_keywords(query, nvidia_rotator)
+        if not keywords:
+            keywords = query.split()
+            
         results = await search_engine_query(keywords, max_results=max_results_per_strategy)
         
         # Add strategy info to results
@@ -557,19 +561,27 @@ async def calculate_comprehensive_score(content: str, user_query: str, url: str,
 async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Enhanced intelligent web search and content processing:
-    1. Generate multiple search strategies
-    2. Execute multi-strategy search
-    3. Advanced content processing with quality assessment
-    4. Cross-validation and comprehensive scoring
-    5. Hierarchical knowledge structuring
+    1. Extract intelligent search keywords
+    2. Generate multiple search strategies
+    3. Execute multi-strategy search
+    4. Advanced content processing with quality assessment
+    5. Cross-validation and comprehensive scoring
+    6. Hierarchical knowledge structuring
     """
     t0 = time.perf_counter()
     
-    # Step 1: Generate multiple search strategies
+    # Step 1: Extract intelligent search keywords
+    keywords = await extract_search_keywords(question, nvidia_rotator)
+    logger.info(f"[SEARCH] Extracted keywords: {keywords}")
+    
+    if not keywords:
+        return "", []
+    
+    # Step 2: Generate multiple search strategies
     strategies = await generate_search_strategies(question, nvidia_rotator)
     logger.info(f"[SEARCH] Generated {len(strategies)} search strategies")
     
-    # Step 2: Execute multi-strategy search
+    # Step 3: Execute multi-strategy search
     search_results = await multi_strategy_search(strategies, max_results_per_strategy=max_web // len(strategies))
     logger.info(f"[SEARCH] Found {len(search_results)} search results across strategies")
     

@@ -6,26 +6,111 @@ from utils.api.router import select_model, generate_answer_with_model
 from utils.service.summarizer import llama_summarize
 
 
-async def duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
-    """Lightweight DuckDuckGo HTML search scraper returning result URLs."""
+async def extract_search_keywords(user_query: str, nvidia_rotator) -> List[str]:
+    """Extract intelligent search keywords from user query using NVIDIA agent."""
+    if not nvidia_rotator:
+        # Fallback: simple keyword extraction
+        words = re.findall(r'\b\w+\b', user_query.lower())
+        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'what', 'how', 'why', 'when', 'where', 'who'}
+        keywords = [w for w in words if len(w) > 2 and w not in stop_words]
+        return keywords[:5]
+    
+    try:
+        sys_prompt = """You are an expert at extracting search keywords from user queries. 
+Extract 3-5 key terms that would be most effective for web search engines.
+Focus on:
+- Main concepts and technical terms
+- Specific entities (names, places, technologies)
+- Action words that describe what the user wants to know
+- Avoid common words like 'what', 'how', 'the', 'a', etc.
+
+Return only the keywords, separated by spaces, no other text."""
+        
+        user_prompt = f"User query: {user_query}\n\nExtract search keywords:"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        keywords = [kw.strip() for kw in response.split() if kw.strip()]
+        return keywords[:5] if keywords else [user_query]
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Keyword extraction failed: {e}")
+        # Fallback
+        words = re.findall(r'\b\w+\b', user_query.lower())
+        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'what', 'how', 'why', 'when', 'where', 'who'}
+        keywords = [w for w in words if len(w) > 2 and w not in stop_words]
+        return keywords[:5]
+
+
+async def generate_search_strategies(user_query: str, nvidia_rotator) -> List[Dict[str, Any]]:
+    """Generate multiple search strategies for comprehensive coverage."""
+    if not nvidia_rotator:
+        return [{"strategy": "direct", "query": user_query, "priority": 1.0}]
+    
+    try:
+        sys_prompt = """You are an expert search strategist. Given a user query, generate 3-4 different search strategies:
+1. Direct search (exact terms)
+2. Broad search (general concepts)
+3. Technical search (specific terminology)
+4. Alternative search (synonyms/related terms)
+
+For each strategy, provide:
+- strategy_name: short descriptive name
+- query: the search query to use
+- priority: importance score 0.0-1.0
+
+Return as JSON array of objects."""
+        
+        user_prompt = f"User query: {user_query}\n\nGenerate search strategies:"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        try:
+            strategies = json.loads(response)
+            if isinstance(strategies, list):
+                return strategies[:4]  # Limit to 4 strategies
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback to simple strategies
+        return [
+            {"strategy": "direct", "query": user_query, "priority": 1.0},
+            {"strategy": "broad", "query": " ".join(user_query.split()[:3]), "priority": 0.7},
+            {"strategy": "technical", "query": user_query + " technical", "priority": 0.8}
+        ]
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Strategy generation failed: {e}")
+        return [{"strategy": "direct", "query": user_query, "priority": 1.0}]
+
+
+async def search_engine_query(keywords: List[str], max_results: int = 30) -> List[Dict[str, str]]:
+    """Search using DuckDuckGo and return structured results with titles and URLs."""
     import httpx
     from urllib.parse import urlparse, parse_qs, unquote
-    urls: List[str] = []
+    results = []
+    
+    if not keywords:
+        return results
+    
     try:
-        t0 = time.perf_counter()
-        q = re.sub(r"\s+", "+", (query or "").strip())
-        if not q:
-            return []
-        # Use lite HTML endpoint directly to avoid 302 and heavier markup
-        search_url = f"https://html.duckduckgo.com/html/?q={q}"
+        # Create search query from keywords
+        query = " ".join(keywords)
+        search_url = f"https://html.duckduckgo.com/html/?q={query}"
         headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
+        
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
             r = await client.get(search_url)
             html = r.text
-            # First, capture anchors with DDG result classes
-            for m in re.finditer(r'<a[^>]+class="([^"]*result__a[^"]*)"[^>]+href="([^"]+)"', html):
+            
+            # Extract results with titles and URLs
+            for m in re.finditer(r'<a[^>]+class="([^"]*result__a[^"]*)"[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', html):
                 href = m.group(2)
-                # DDG often wraps URLs like /l/?kh=1&uddg=<encoded>
+                title = m.group(3).strip()
+                
+                # Handle DuckDuckGo URL unwrapping
                 if href.startswith('/l/?'):
                     try:
                         parsed = urlparse(href)
@@ -38,14 +123,22 @@ async def duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
                         continue
                 else:
                     url = href
-                if "duckduckgo.com" in url:
+                
+                if "duckduckgo.com" in url or not title or not url.startswith('http'):
                     continue
-                if url.startswith('http'):
-                    urls.append(url)
-            # Fallback: capture any anchor with href and try to unwrap uddg
-            if len(urls) < max_results:
-                for m in re.finditer(r'<a[^>]+href="([^"]+)"', html):
+                    
+                results.append({
+                    "url": url,
+                    "title": title,
+                    "keywords": keywords
+                })
+            
+            # Fallback: extract any links if we didn't get enough results
+            if len(results) < max_results:
+                for m in re.finditer(r'<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>', html):
                     href = m.group(1)
+                    title = m.group(2).strip()
+                    
                     if href.startswith('/l/?'):
                         try:
                             parsed = urlparse(href)
@@ -58,261 +151,577 @@ async def duckduckgo_search(query: str, max_results: int = 30) -> List[str]:
                             continue
                     else:
                         url = href
-                    if "duckduckgo.com" in url:
+                    
+                    if "duckduckgo.com" in url or not title or not url.startswith('http') or any(r["url"] == url for r in results):
                         continue
-                    if url.startswith('http'):
-                        urls.append(url)
-            seen = set()
-            deduped = []
-            for u in urls:
-                if u not in seen:
-                    seen.add(u)
-                    deduped.append(u)
-            out = deduped[:max_results]
-            logger.info(f"[SEARCH] DDG results: requested={max_results}, got={len(out)} in {time.perf_counter() - t0:.2f}s")
-            return out
+                        
+                    results.append({
+                        "url": url,
+                        "title": title,
+                        "keywords": keywords
+                    })
+            
+            return results[:max_results]
+            
     except Exception as e:
-        logger.warning(f"[SEARCH] Web search failed: {e}")
+        logger.warning(f"[SEARCH] Search engine query failed: {e}")
         return []
 
 
-async def fetch_readable(url: str) -> str:
-    """Fetch readable text using Jina Reader proxy if possible, fallback to raw HTML text."""
+async def multi_strategy_search(strategies: List[Dict[str, Any]], max_results_per_strategy: int = 8) -> List[Dict[str, str]]:
+    """Execute multiple search strategies and combine results."""
+    all_results = []
+    seen_urls = set()
+    
+    # Sort strategies by priority
+    strategies.sort(key=lambda x: x.get("priority", 0.5), reverse=True)
+    
+    for strategy in strategies:
+        query = strategy.get("query", "")
+        if not query:
+            continue
+            
+        keywords = query.split()
+        results = await search_engine_query(keywords, max_results=max_results_per_strategy)
+        
+        # Add strategy info to results
+        for result in results:
+            if result["url"] not in seen_urls:
+                result["strategy"] = strategy.get("strategy", "unknown")
+                result["priority"] = strategy.get("priority", 0.5)
+                all_results.append(result)
+                seen_urls.add(result["url"])
+    
+    # Sort by priority and limit total results
+    all_results.sort(key=lambda x: x.get("priority", 0.5), reverse=True)
+    return all_results[:max_results_per_strategy * len(strategies)]
+
+
+async def fetch_and_process_content(url: str, title: str, user_query: str, nvidia_rotator) -> Dict[str, Any]:
+    """Fetch content and use NVIDIA agent to extract relevant information."""
     import httpx
     headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
-    reader_url = f"https://r.jina.ai/{url}"
+    
     try:
+        # Try Jina Reader first for better content extraction
+        reader_url = f"https://r.jina.ai/{url}"
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
             r = await client.get(reader_url)
             if r.status_code == 200 and r.text and len(r.text) > 100:
-                logger.info(f"[SEARCH] Reader fetched: {url}")
-                return r.text.strip()
-            r2 = await client.get(url)
-            ctype = r2.headers.get("content-type", "").lower()
-            if any(binmt in ctype for binmt in ("image/", "video/", "audio/", "application/zip")):
-                logger.info(f"[SEARCH] Skipping non-text content: {url} ({ctype})")
-                return ""
-            logger.info(f"[SEARCH] Direct fetched: {url} (reader not usable)")
-            return (r2.text or "").strip()
+                content = r.text.strip()
+            else:
+                # Fallback to direct fetch
+                r2 = await client.get(url)
+                ctype = r2.headers.get("content-type", "").lower()
+                if any(binmt in ctype for binmt in ("image/", "video/", "audio/", "application/zip")):
+                    return {"url": url, "title": title, "relevant_content": "", "summary": "", "relevance_score": 0.0}
+                content = (r2.text or "").strip()
+        
+        if not content or len(content) < 200:
+            return {"url": url, "title": title, "relevant_content": "", "summary": "", "relevance_score": 0.0}
+        
+        # Use NVIDIA agent to extract relevant information
+        relevant_content = await extract_relevant_content(content, user_query, nvidia_rotator)
+        
+        if not relevant_content:
+            return {"url": url, "title": title, "relevant_content": "", "summary": "", "relevance_score": 0.0}
+        
+        # Generate summary of the relevant content
+        summary = await generate_content_summary(relevant_content, nvidia_rotator)
+        
+        # Calculate relevance score
+        relevance_score = calculate_relevance_score(relevant_content, user_query)
+        
+        return {
+            "url": url,
+            "title": title,
+            "relevant_content": relevant_content,
+            "summary": summary,
+            "relevance_score": relevance_score
+        }
+        
     except Exception as e:
-        logger.warning(f"[SEARCH] Fetch failed for {url}: {e}")
-        return ""
+        logger.warning(f"[SEARCH] Content processing failed for {url}: {e}")
+        return {"url": url, "title": title, "relevant_content": "", "summary": "", "relevance_score": 0.0}
+
+
+async def extract_relevant_content(content: str, user_query: str, nvidia_rotator) -> str:
+    """Use NVIDIA agent to extract only the content relevant to the user query."""
+    if not nvidia_rotator:
+        # Fallback: return first 2000 chars
+        return content[:2000]
+    
+    try:
+        # If content is too large, chunk it first
+        if len(content) > 8000:
+            chunks = chunk_content_intelligently(content, max_chunk_size=4000)
+            relevant_chunks = []
+            
+            for chunk in chunks:
+                if is_chunk_relevant(chunk, user_query):
+                    relevant_chunks.append(chunk)
+                    if len(relevant_chunks) >= 3:  # Limit to top 3 relevant chunks
+                        break
+            
+            content = "\n\n".join(relevant_chunks)
+        
+        if len(content) > 4000:
+            content = content[:4000]  # Truncate if still too long
+        
+        sys_prompt = """You are an expert at extracting relevant information from web content.
+Given a user query and web content, extract ONLY the parts that directly answer or relate to the query.
+- Keep the original text as much as possible
+- Focus on facts, explanations, and specific details
+- Remove irrelevant sections, ads, navigation, etc.
+- Preserve important context and structure
+- If nothing is relevant, return empty string
+
+Return only the relevant content, no additional commentary."""
+        
+        user_prompt = f"User Query: {user_query}\n\nWeb Content:\n{content}\n\nExtract relevant information:"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        return response.strip() if response.strip() else ""
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Content extraction failed: {e}")
+        return content[:2000]  # Fallback
+
+
+async def assess_content_quality(content: str, nvidia_rotator) -> Dict[str, Any]:
+    """Assess content quality using NVIDIA agent."""
+    if not nvidia_rotator or not content:
+        return {"quality_score": 0.5, "issues": [], "strengths": []}
+    
+    try:
+        sys_prompt = """You are an expert content quality assessor. Analyze web content and provide:
+1. quality_score: 0.0-1.0 (1.0 = excellent)
+2. issues: list of quality problems (empty if none)
+3. strengths: list of quality strengths
+
+Consider: accuracy, completeness, clarity, authority, recency, bias, factual claims."""
+        
+        user_prompt = f"Assess this content quality:\n\n{content[:2000]}"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        try:
+            # Try to parse JSON response
+            assessment = json.loads(response)
+            if isinstance(assessment, dict):
+                return {
+                    "quality_score": float(assessment.get("quality_score", 0.5)),
+                    "issues": assessment.get("issues", []),
+                    "strengths": assessment.get("strengths", [])
+                }
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback: simple heuristic assessment
+        quality_score = 0.5
+        issues = []
+        strengths = []
+        
+        if len(content) < 100:
+            issues.append("Very short content")
+            quality_score -= 0.3
+        elif len(content) > 2000:
+            strengths.append("Comprehensive content")
+            quality_score += 0.2
+        
+        if any(word in content.lower() for word in ['according to', 'research shows', 'studies indicate']):
+            strengths.append("References sources")
+            quality_score += 0.2
+        
+        if any(word in content.lower() for word in ['opinion', 'believe', 'think', 'feel']):
+            issues.append("Contains subjective language")
+            quality_score -= 0.1
+        
+        return {
+            "quality_score": max(0.0, min(1.0, quality_score)),
+            "issues": issues,
+            "strengths": strengths
+        }
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Quality assessment failed: {e}")
+        return {"quality_score": 0.5, "issues": [], "strengths": []}
+
+
+async def cross_validate_information(content: str, other_contents: List[str], nvidia_rotator) -> Dict[str, Any]:
+    """Cross-validate information across multiple sources."""
+    if not nvidia_rotator or not other_contents:
+        return {"consistency_score": 0.5, "conflicts": [], "agreements": []}
+    
+    try:
+        # Combine other contents for comparison
+        comparison_text = "\n\n---\n\n".join(other_contents[:3])  # Limit to 3 sources
+        
+        sys_prompt = """You are an expert fact-checker. Compare information across sources and identify:
+1. consistency_score: 0.0-1.0 (1.0 = fully consistent)
+2. conflicts: list of contradictory information
+3. agreements: list of consistent information
+
+Focus on factual claims, statistics, and verifiable information."""
+        
+        user_prompt = f"Main content:\n{content[:1000]}\n\nOther sources:\n{comparison_text[:2000]}\n\nAnalyze consistency:"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        try:
+            validation = json.loads(response)
+            if isinstance(validation, dict):
+                return {
+                    "consistency_score": float(validation.get("consistency_score", 0.5)),
+                    "conflicts": validation.get("conflicts", []),
+                    "agreements": validation.get("agreements", [])
+                }
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback: simple consistency check
+        return {"consistency_score": 0.7, "conflicts": [], "agreements": ["Basic information present"]}
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Cross-validation failed: {e}")
+        return {"consistency_score": 0.5, "conflicts": [], "agreements": []}
+
+
+def chunk_content_intelligently(content: str, max_chunk_size: int = 4000) -> List[str]:
+    """Intelligently chunk content by paragraphs and sentences."""
+    # Split by double newlines (paragraphs)
+    paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+    
+    chunks = []
+    current_chunk = ""
+    
+    for paragraph in paragraphs:
+        if len(current_chunk) + len(paragraph) <= max_chunk_size:
+            current_chunk += paragraph + "\n\n"
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = paragraph + "\n\n"
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
+
+def is_chunk_relevant(chunk: str, user_query: str) -> bool:
+    """Simple relevance check based on keyword overlap."""
+    query_words = set(user_query.lower().split())
+    chunk_words = set(chunk.lower().split())
+    
+    # Check for significant word overlap
+    overlap = len(query_words.intersection(chunk_words))
+    return overlap >= 2 or len(query_words.intersection(chunk_words)) / len(query_words) > 0.3
+
+
+async def generate_content_summary(content: str, nvidia_rotator) -> str:
+    """Generate a concise summary of the relevant content."""
+    if not nvidia_rotator or not content:
+        return content[:200] + "..." if len(content) > 200 else content
+    
+    try:
+        sys_prompt = """You are an expert at creating concise summaries.
+Create a brief, informative summary (2-3 sentences) that captures the key points.
+Focus on the most important facts and insights.
+Be clear and direct."""
+        
+        user_prompt = f"Summarize this content:\n\n{content}"
+        
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        return response.strip() if response.strip() else content[:200] + "..."
+        
+    except Exception as e:
+        logger.warning(f"[SEARCH] Summary generation failed: {e}")
+        return content[:200] + "..." if len(content) > 200 else content
+
+
+def calculate_relevance_score(content: str, user_query: str) -> float:
+    """Calculate relevance score based on keyword overlap and content quality."""
+    if not content:
+        return 0.0
+    
+    query_words = set(user_query.lower().split())
+    content_words = set(content.lower().split())
+    
+    # Basic keyword overlap
+    overlap = len(query_words.intersection(content_words))
+    overlap_score = min(overlap / len(query_words), 1.0) if query_words else 0.0
+    
+    # Content quality indicators
+    quality_score = 0.0
+    if len(content) > 100:  # Substantial content
+        quality_score += 0.2
+    if any(word in content.lower() for word in ['because', 'therefore', 'however', 'specifically', 'example']):  # Explanatory content
+        quality_score += 0.3
+    if any(char.isdigit() for char in content):  # Contains numbers/data
+        quality_score += 0.2
+    
+    return min(overlap_score + quality_score, 1.0)
+
+
+def calculate_authority_score(url: str, title: str) -> float:
+    """Calculate authority score based on domain and title characteristics."""
+    authority_score = 0.5  # Base score
+    
+    # Domain-based scoring
+    domain = url.lower()
+    if any(edu in domain for edu in ['.edu', '.ac.', '.university']):
+        authority_score += 0.3  # Academic sources
+    elif any(gov in domain for gov in ['.gov', '.govt', '.government']):
+        authority_score += 0.3  # Government sources
+    elif any(org in domain for org in ['.org', '.ngo', '.foundation']):
+        authority_score += 0.2  # Non-profit sources
+    elif any(com in domain for com in ['.com', '.net', '.co']):
+        authority_score += 0.1  # Commercial sources
+    
+    # Title-based scoring
+    title_lower = title.lower()
+    if any(word in title_lower for word in ['research', 'study', 'analysis', 'report']):
+        authority_score += 0.2
+    if any(word in title_lower for word in ['official', 'government', 'university', 'institute']):
+        authority_score += 0.2
+    if any(word in title_lower for word in ['news', 'blog', 'opinion', 'personal']):
+        authority_score -= 0.1
+    
+    return max(0.0, min(1.0, authority_score))
+
+
+def calculate_freshness_score(content: str, url: str) -> float:
+    """Calculate content freshness score based on temporal indicators."""
+    freshness_score = 0.5  # Base score
+    
+    content_lower = content.lower()
+    
+    # Look for date indicators
+    current_year = 2024
+    for year in range(current_year - 5, current_year + 1):
+        if str(year) in content_lower:
+            if year >= current_year - 1:
+                freshness_score += 0.3
+            elif year >= current_year - 3:
+                freshness_score += 0.1
+            else:
+                freshness_score -= 0.1
+    
+    # Look for recency indicators
+    if any(word in content_lower for word in ['recent', 'latest', 'new', 'updated', 'current']):
+        freshness_score += 0.2
+    if any(word in content_lower for word in ['outdated', 'old', 'previous', 'former']):
+        freshness_score -= 0.2
+    
+    return max(0.0, min(1.0, freshness_score))
+
+
+async def calculate_comprehensive_score(content: str, user_query: str, url: str, title: str, 
+                                      quality_assessment: Dict[str, Any], 
+                                      consistency_assessment: Dict[str, Any]) -> float:
+    """Calculate comprehensive relevance score combining multiple factors."""
+    # Base relevance score
+    relevance_score = calculate_relevance_score(content, user_query)
+    
+    # Quality score
+    quality_score = quality_assessment.get("quality_score", 0.5)
+    
+    # Authority score
+    authority_score = calculate_authority_score(url, title)
+    
+    # Freshness score
+    freshness_score = calculate_freshness_score(content, url)
+    
+    # Consistency score
+    consistency_score = consistency_assessment.get("consistency_score", 0.5)
+    
+    # Weighted combination
+    comprehensive_score = (
+        relevance_score * 0.4 +      # Most important: relevance to query
+        quality_score * 0.25 +       # Content quality
+        authority_score * 0.15 +     # Source authority
+        freshness_score * 0.1 +      # Content freshness
+        consistency_score * 0.1      # Cross-source consistency
+    )
+    
+    return max(0.0, min(1.0, comprehensive_score))
 
 
 async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
     """
-    Perform search, fetch pages, rank by similarity to the question, and
-    return a composed context string plus sources metadata with URLs.
+    Enhanced intelligent web search and content processing:
+    1. Generate multiple search strategies
+    2. Execute multi-strategy search
+    3. Advanced content processing with quality assessment
+    4. Cross-validation and comprehensive scoring
+    5. Hierarchical knowledge structuring
     """
     t0 = time.perf_counter()
-    urls = await duckduckgo_search(question, max_results=max_web)
-    if not urls:
+    
+    # Step 1: Generate multiple search strategies
+    strategies = await generate_search_strategies(question, nvidia_rotator)
+    logger.info(f"[SEARCH] Generated {len(strategies)} search strategies")
+    
+    # Step 2: Execute multi-strategy search
+    search_results = await multi_strategy_search(strategies, max_results_per_strategy=max_web // len(strategies))
+    logger.info(f"[SEARCH] Found {len(search_results)} search results across strategies")
+    
+    if not search_results:
         return "", []
+    
+    # Step 3: Advanced content processing with quality assessment
+    processing_tasks = []
+    for result in search_results:
+        task = fetch_and_process_content_enhanced(result["url"], result["title"], question, nvidia_rotator)
+        processing_tasks.append(task)
+    
+    processed_results = await asyncio.gather(*processing_tasks)
+    
+    # Step 4: Cross-validation and comprehensive scoring
+    relevant_contents = [r["relevant_content"] for r in processed_results if r["relevant_content"]]
+    
+    enhanced_results = []
+    for result in processed_results:
+        if not result["relevant_content"]:
+            continue
+            
+        # Cross-validate with other sources
+        other_contents = [c for c in relevant_contents if c != result["relevant_content"]]
+        consistency_assessment = await cross_validate_information(
+            result["relevant_content"], other_contents, nvidia_rotator
+        )
+        
+        # Calculate comprehensive score
+        comprehensive_score = await calculate_comprehensive_score(
+            result["relevant_content"], question, result["url"], result["title"],
+            result.get("quality_assessment", {}), consistency_assessment
+        )
+        
+        enhanced_result = {
+            **result,
+            "comprehensive_score": comprehensive_score,
+            "consistency_assessment": consistency_assessment
+        }
+        enhanced_results.append(enhanced_result)
+    
+    # Step 5: Filter and rank by comprehensive score
+    enhanced_results.sort(key=lambda x: x["comprehensive_score"], reverse=True)
+    top_results = enhanced_results[:top_k]
+    
+    logger.info(f"[SEARCH] Processed {len(enhanced_results)} enhanced results, using top {len(top_results)} in {time.perf_counter() - t0:.2f}s")
+    
+    # Step 6: Hierarchical knowledge structuring
+    web_contexts = []
+    web_sources_meta = []
+    
+    # Group results by strategy for better organization
+    strategy_groups = {}
+    for result in top_results:
+        strategy = result.get("strategy", "unknown")
+        if strategy not in strategy_groups:
+            strategy_groups[strategy] = []
+        strategy_groups[strategy].append(result)
+    
+    # Create hierarchical context structure
+    for strategy, results in strategy_groups.items():
+        if not results:
+            continue
+            
+        # Strategy header
+        strategy_header = f"[{strategy.upper()} SOURCES]"
+        web_contexts.append(strategy_header)
+        
+        for i, result in enumerate(results, 1):
+            # Create detailed context entry
+            context_entry = f"[{i}. {result['title']}]\n"
+            context_entry += f"URL: {result['url']}\n"
+            context_entry += f"Authority: {result.get('authority_score', 0.5):.2f}\n"
+            context_entry += f"Quality: {result.get('quality_assessment', {}).get('quality_score', 0.5):.2f}\n"
+            context_entry += f"Freshness: {result.get('freshness_score', 0.5):.2f}\n"
+            context_entry += f"Consistency: {result.get('consistency_assessment', {}).get('consistency_score', 0.5):.2f}\n"
+            context_entry += f"Summary: {result['summary']}\n"
+            context_entry += f"Relevant Content: {result['relevant_content'][:1200]}..."
+            
+            web_contexts.append(context_entry)
+            
+            # Create enhanced source metadata
+            web_sources_meta.append({
+                "url": result["url"],
+                "topic_name": result["title"],
+                "score": float(result["comprehensive_score"]),
+                "kind": "web",
+                "summary": result["summary"],
+                "strategy": strategy,
+                "authority_score": result.get("authority_score", 0.5),
+                "quality_score": result.get("quality_assessment", {}).get("quality_score", 0.5),
+                "freshness_score": result.get("freshness_score", 0.5),
+                "consistency_score": result.get("consistency_assessment", {}).get("consistency_score", 0.5)
+            })
+    
+    composed_context = "\n\n---\n\n".join(web_contexts)
+    return composed_context, web_sources_meta
 
-    async def _fetch(u: str):
-        txt = await fetch_readable(u)
-        return u, txt
 
-    tasks = [asyncio.create_task(_fetch(u)) for u in urls]
-    fetched = await asyncio.gather(*tasks)
-    web_docs = [(u, t) for (u, t) in fetched if t and len(t) > 200]
-    logger.info(f"[SEARCH] Fetched pages: total_urls={len(urls)}, usable={len(web_docs)}")
-    if not web_docs:
-        return "", []
-
-    import numpy as np
-    q_vec = embedder.embed([question])[0]
-    qv = np.array(q_vec, dtype="float32")
-    scored: List[Dict[str, Any]] = []
-    for url, text in web_docs:
-        snippet = text[:4000]
-        v = np.array(embedder.embed([snippet])[0], dtype="float32")
-        denom = (np.linalg.norm(qv) * np.linalg.norm(v)) or 1.0
-        sim = float(np.dot(qv, v) / denom)
-        scored.append({"url": url, "text": snippet, "score": sim})
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    top_web = scored[:min(top_k, len(scored))]
-    logger.info(f"[SEARCH] Ranked web docs: kept_top={len(top_web)} (top_k={top_k}) in {time.perf_counter() - t0:.2f}s")
-
-    # Compose context and sources meta
-    from utils.service.common import trim_text
-    web_contexts: List[str] = []
-    web_sources_meta: List[Dict[str, Any]] = []
-    for w in top_web:
-        title_line = (w["text"].splitlines()[0][:120] if w["text"] else "Web").strip()
-        web_contexts.append(f"[WEB: {title_line}] {trim_text(w['text'], 2000)}")
-        web_sources_meta.append({
-            "url": w["url"],
-            "topic_name": title_line,
-            "score": float(w["score"]),
-            "kind": "web"
-        })
-    composed = "\n\n---\n\n".join(web_contexts)
-    return composed, web_sources_meta
-
-
-
-# ────────────────────────────── LLM-Enhanced Search Planning ──────────────────
-async def generate_query_variations_llm(question: str, max_variations: int = 5) -> List[str]:
-    """Use NVIDIA small model to expand queries for better recall."""
-    system = (
-        "You are an expert at query expansion and reformulation. Given a user question, "
-        "produce 3-5 alternative ways to phrase it for web search.\n"
-        "Focus on synonyms, technical terms, broader/narrower scopes.\n"
-        "Return one variation per line, no numbering."
-    )
-    user = f"Original question: {question}\n\nVariations:"
+async def fetch_and_process_content_enhanced(url: str, title: str, user_query: str, nvidia_rotator) -> Dict[str, Any]:
+    """Enhanced content processing with quality assessment and authority scoring."""
+    import httpx
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; StudyBuddy/1.0)"}
+    
     try:
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        text = await generate_answer_with_model(selection, system, user, gemini_rotator, nvidia_rotator)
-        # Remove meta lines like "Here are ..." or numbering
-        raw_lines = [v.strip() for v in text.split('\n') if v.strip()]
-        variations = []
-        for v in raw_lines:
-            if re.match(r"^(here (are|is)|i suggest|variations|alternative|possible queries)\b", v.strip().lower()):
-                continue
-            v = re.sub(r"^[-*\d\.\)\s]+", "", v).strip()
-            if len(v) >= 8:
-                variations.append(v)
-        uniq = []
-        seen = set()
-        for v in variations:
-            k = v.lower()
-            if k not in seen:
-                seen.add(k)
-                uniq.append(v)
-        if question not in uniq:
-            uniq.insert(0, question)
-        return uniq[:max_variations]
+        # Try Jina Reader first for better content extraction
+        reader_url = f"https://r.jina.ai/{url}"
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
+            r = await client.get(reader_url)
+            if r.status_code == 200 and r.text and len(r.text) > 100:
+                content = r.text.strip()
+            else:
+                # Fallback to direct fetch
+                r2 = await client.get(url)
+                ctype = r2.headers.get("content-type", "").lower()
+                if any(binmt in ctype for binmt in ("image/", "video/", "audio/", "application/zip")):
+                    return {"url": url, "title": title, "relevant_content": "", "summary": "", "comprehensive_score": 0.0}
+                content = (r2.text or "").strip()
+        
+        if not content or len(content) < 200:
+            return {"url": url, "title": title, "relevant_content": "", "summary": "", "comprehensive_score": 0.0}
+        
+        # Extract relevant content
+        relevant_content = await extract_relevant_content(content, user_query, nvidia_rotator)
+        
+        if not relevant_content:
+            return {"url": url, "title": title, "relevant_content": "", "summary": "", "comprehensive_score": 0.0}
+        
+        # Assess content quality
+        quality_assessment = await assess_content_quality(relevant_content, nvidia_rotator)
+        
+        # Calculate authority and freshness scores
+        authority_score = calculate_authority_score(url, title)
+        freshness_score = calculate_freshness_score(relevant_content, url)
+        
+        # Generate summary
+        summary = await generate_content_summary(relevant_content, nvidia_rotator)
+        
+        # Calculate base relevance score
+        relevance_score = calculate_relevance_score(relevant_content, user_query)
+        
+        return {
+            "url": url,
+            "title": title,
+            "relevant_content": relevant_content,
+            "summary": summary,
+            "relevance_score": relevance_score,
+            "authority_score": authority_score,
+            "freshness_score": freshness_score,
+            "quality_assessment": quality_assessment
+        }
+        
     except Exception as e:
-        logger.warning(f"[SEARCH] LLM variations failed: {e}")
-        return [question]
-
-
-async def plan_subqueries(question: str) -> List[str]:
-    """Plan sub-queries using NVIDIA for simple, Gemini for complex questions."""
-    selection = select_model(question=question, context=question)
-    system = (
-        "You are a planning agent. Break the user's question into 3-6 focused sub-queries "
-        "that, when searched separately, will comprehensively answer the question.\n"
-        "Return a JSON array of strings only."
-    )
-    user = f"Question: {question}\nReturn JSON array only."
-    try:
-        text = await generate_answer_with_model(selection, system, user, gemini_rotator, nvidia_rotator)
-        try:
-            arr = json.loads(text)
-            if isinstance(arr, list) and all(isinstance(x, str) for x in arr):
-                out = []
-                seen = set()
-                for q in arr:
-                    k = q.strip().lower()
-                    if k and k not in seen:
-                        seen.add(k)
-                        out.append(q.strip())
-                if out:
-                    return out[:6]
-        except json.JSONDecodeError:
-            pass
-        return await generate_query_variations_llm(question, max_variations=5)
-    except Exception as e:
-        logger.warning(f"[SEARCH] Planning failed, using variations: {e}")
-        return await generate_query_variations_llm(question, max_variations=5)
-
-
-def _cosine_similarity(a, b):
-    import numpy as np
-    denom = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
-    return float(np.dot(a, b) / denom)
-
-
-async def plan_and_build_web_context(question: str, max_web: int = 30, per_query: int = 6, top_k: int = 12,
-                                     dedup_threshold: float = 0.90) -> Tuple[str, List[Dict[str, Any]]]:
-    """
-    Plan sub-queries with LLM, search/fetch per sub-query, summarize and deduplicate
-    semantically similar snippets, and return fused context + sources.
-    - max_web: total budget across all sub-queries
-    - per_query: max URLs per sub-query
-    - top_k: final number of fused snippets to keep
-    - dedup_threshold: cosine similarity threshold to drop near-duplicates
-    """
-    import numpy as np
-    subqueries = await plan_subqueries(question)
-    if not subqueries:
-        subqueries = [question]
-
-    per_q = max(3, min(per_query, max_web // max(1, len(subqueries))))
-
-    snippets: List[Tuple[float, str, Dict[str, Any]]] = []  # (score, text, meta)
-    q_vec = np.array(embedder.embed([question])[0], dtype="float32")
-
-    # Concurrency limiter to avoid hammering
-    sem = asyncio.Semaphore(8)
-
-    async def process_url(url: str) -> Tuple[float, str, Dict[str, Any]]:
-        async with sem:
-            txt = await fetch_readable(url)
-            if not txt or len(txt) < 200:
-                return 0.0, "", {}
-            try:
-                summary = await llama_summarize(txt[:6000], max_sentences=4)
-            except Exception:
-                summary = txt[:1000]
-            v = np.array(embedder.embed([summary])[0], dtype="float32")
-            sim = _cosine_similarity(q_vec, v)
-            meta = {"url": url, "topic_name": summary.split('\n')[0][:120], "score": float(sim), "kind": "web"}
-            return sim, summary, meta
-
-    for sq in subqueries:
-        urls = await duckduckgo_search(sq, max_results=per_q)
-        if not urls:
-            continue
-        tasks = [asyncio.create_task(process_url(u)) for u in urls]
-        results = await asyncio.gather(*tasks)
-        for sim, summary, meta in results:
-            if meta and summary:
-                snippets.append((sim, summary, meta))
-
-    if not snippets:
-        return "", []
-
-    # Deduplicate by URL and semantic similarity
-    snippets.sort(key=lambda x: x[0], reverse=True)
-    kept_texts: List[str] = []
-    kept_vecs: List[List[float]] = []
-    kept_meta: List[Dict[str, Any]] = []
-    seen_urls = set()
-    for score, text, meta in snippets:
-        url = meta.get("url")
-        if url in seen_urls:
-            continue
-        v = embedder.embed([text])[0]
-        is_dup = False
-        for kv in kept_vecs:
-            if _cosine_similarity(np.array(v, dtype="float32"), np.array(kv, dtype="float32")) >= dedup_threshold:
-                is_dup = True
-                break
-        if is_dup:
-            continue
-        seen_urls.add(url)
-        kept_texts.append(text)
-        kept_vecs.append(v)
-        kept_meta.append(meta)
-        if len(kept_texts) >= top_k:
-            break
-
-    # Fused intro summary
-    try:
-        fused_intro = await llama_summarize("\n\n".join(kept_texts)[:10000], max_sentences=5)
-    except Exception:
-        fused_intro = ""
-
-    from utils.service.common import trim_text
-    blocks = []
-    if fused_intro:
-        blocks.append(f"[WEB_FUSED_SUMMARY] {trim_text(fused_intro, 1800)}")
-    for text, meta in zip(kept_texts, kept_meta):
-        title_line = (text.splitlines()[0][:120] if text else meta.get("topic_name", "Web")).strip()
-        blocks.append(f"[WEB: {title_line}] {trim_text(text, 2000)}")
-    composed = "\n\n---\n\n".join(blocks)
-    return composed, kept_meta
+        logger.warning(f"[SEARCH] Enhanced content processing failed for {url}: {e}")
+        return {"url": url, "title": title, "relevant_content": "", "summary": "", "comprehensive_score": 0.0}

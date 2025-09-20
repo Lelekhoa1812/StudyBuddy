@@ -7,7 +7,7 @@ from fastapi import Form, HTTPException
 from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator, nvidia_rotator
 from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse
 from utils.service.common import trim_text
-from .search import build_web_context, plan_and_build_web_context
+from .search import build_web_context
 from utils.api.router import select_model, generate_answer_with_model
 
 

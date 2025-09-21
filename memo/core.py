@@ -310,7 +310,7 @@ def get_memory_system(mongo_uri: str = None, db_name: str = None) -> MemorySyste
     
     return _memory_system
 
-def reset_memory_system():
-    """Reset the global memory system (for testing)"""
-    global _memory_system
-    _memory_system = None
+# def reset_memory_system():
+#     """Reset the global memory system (for testing)"""
+#     global _memory_system
+#     _memory_system = None

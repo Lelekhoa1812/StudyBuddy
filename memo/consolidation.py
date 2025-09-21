@@ -231,7 +231,7 @@ def get_consolidation_manager(memory_system=None, embedder=None) -> Consolidatio
     
     return _consolidation_manager
 
-def reset_consolidation_manager():
-    """Reset the global consolidation manager (for testing)"""
-    global _consolidation_manager
-    _consolidation_manager = None
+# def reset_consolidation_manager():
+#     """Reset the global consolidation manager (for testing)"""
+#     global _consolidation_manager
+#     _consolidation_manager = None

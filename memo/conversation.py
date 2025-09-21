@@ -110,7 +110,7 @@ def get_conversation_manager(memory_system=None, embedder: EmbeddingClient = Non
     
     return _conversation_manager
 
-def reset_conversation_manager():
-    """Reset the global conversation manager (for testing)"""
-    global _conversation_manager
-    _conversation_manager = None
+# def reset_conversation_manager():
+#     """Reset the global conversation manager (for testing)"""
+#     global _conversation_manager
+#     _conversation_manager = None

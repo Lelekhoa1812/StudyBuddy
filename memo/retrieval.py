@@ -331,7 +331,7 @@ def get_retrieval_manager(memory_system=None, embedder: EmbeddingClient = None) 
     
     return _retrieval_manager
 
-def reset_retrieval_manager():
-    """Reset the global retrieval manager (for testing)"""
-    global _retrieval_manager
-    _retrieval_manager = None
+# def reset_retrieval_manager():
+#     """Reset the global retrieval manager (for testing)"""
+#     global _retrieval_manager
+#     _retrieval_manager = None

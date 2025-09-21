@@ -190,3 +190,81 @@ class PersistentMemory:
         except Exception as e:
             logger.error(f"[PERSISTENT_MEMORY] Failed to get memory stats: {e}")
             return {}
+    
+    def update_memory(self, memory_id: str, content: str = None, importance: str = None, 
+                     tags: List[str] = None, metadata: Dict[str, Any] = None) -> bool:
+        """Update an existing memory entry"""
+        try:
+            update_data = {"updated_at": datetime.now(timezone.utc)}
+            
+            if content is not None:
+                update_data["content"] = content
+                update_data["summary"] = content[:200] + "..." if len(content) > 200 else content
+                # Update embedding if content changed
+                update_data["embedding"] = self.embedder.embed([content])[0]
+            
+            if importance is not None:
+                update_data["importance"] = importance
+            
+            if tags is not None:
+                update_data["tags"] = tags
+            
+            if metadata is not None:
+                update_data["metadata"] = metadata
+            
+            result = self.memories.update_one(
+                {"id": memory_id}, 
+                {"$set": update_data}
+            )
+            
+            if result.modified_count > 0:
+                logger.info(f"[PERSISTENT_MEMORY] Updated memory {memory_id}")
+                return True
+            else:
+                logger.warning(f"[PERSISTENT_MEMORY] Memory {memory_id} not found for update")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[PERSISTENT_MEMORY] Failed to update memory: {e}")
+            return False
+    
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete a specific memory entry"""
+        try:
+            result = self.memories.delete_one({"id": memory_id})
+            if result.deleted_count > 0:
+                logger.info(f"[PERSISTENT_MEMORY] Deleted memory {memory_id}")
+                return True
+            else:
+                logger.warning(f"[PERSISTENT_MEMORY] Memory {memory_id} not found for deletion")
+                return False
+        except Exception as e:
+            logger.error(f"[PERSISTENT_MEMORY] Failed to delete memory: {e}")
+            return False
+    
+    def get_memory_by_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific memory by its ID"""
+        try:
+            memory = self.memories.find_one({"id": memory_id})
+            if memory:
+                # Increment access count
+                self.increment_access(memory_id)
+            return memory
+        except Exception as e:
+            logger.error(f"[PERSISTENT_MEMORY] Failed to get memory by ID: {e}")
+            return None
+    
+    def increment_access(self, memory_id: str) -> bool:
+        """Increment access count and update last accessed time"""
+        try:
+            result = self.memories.update_one(
+                {"id": memory_id},
+                {
+                    "$inc": {"access_count": 1},
+                    "$set": {"last_accessed": datetime.now(timezone.utc)}
+                }
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"[PERSISTENT_MEMORY] Failed to increment access: {e}")
+            return False

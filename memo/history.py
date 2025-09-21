@@ -86,19 +86,19 @@ class HistoryManager:
 
 # ────────────────────────────── Legacy Functions (Backward Compatibility) ──────────────────────────────
 
-async def summarize_qa_with_nvidia(question: str, answer: str, rotator) -> str:
-    """Legacy function - use HistoryManager.summarize_qa_with_nvidia() instead"""
-    return await summarize_qa(question, answer, rotator)
+# async def summarize_qa_with_nvidia(question: str, answer: str, rotator) -> str:
+#     """Legacy function - use HistoryManager.summarize_qa_with_nvidia() instead"""
+#     return await summarize_qa(question, answer, rotator)
 
-async def files_relevance_legacy(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
-    """Legacy function - use HistoryManager.files_relevance() instead"""
-    return await files_relevance(question, file_summaries, rotator)
+# async def files_relevance_legacy(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
+#     """Legacy function - use HistoryManager.files_relevance() instead"""
+#     return await files_relevance(question, file_summaries, rotator)
 
-async def related_recent_and_semantic_context(user_id: str, question: str, memory, embedder: EmbeddingClient, topk_sem: int = 3, nvidia_rotator=None) -> Tuple[str, str]:
-    """Legacy function - use HistoryManager.related_recent_and_semantic_context() instead"""
-    # Create a temporary history manager for legacy compatibility
-    history_manager = HistoryManager(memory)
-    return await history_manager.related_recent_and_semantic_context(user_id, question, embedder, topk_sem, nvidia_rotator)
+# async def related_recent_and_semantic_context(user_id: str, question: str, memory, embedder: EmbeddingClient, topk_sem: int = 3, nvidia_rotator=None) -> Tuple[str, str]:
+#     """Legacy function - use HistoryManager.related_recent_and_semantic_context() instead"""
+#     # Create a temporary history manager for legacy compatibility
+#     history_manager = HistoryManager(memory)
+#     return await history_manager.related_recent_and_semantic_context(user_id, question, embedder, topk_sem, nvidia_rotator)
 
 # ────────────────────────────── Global Instance ──────────────────────────────
 
@@ -114,7 +114,7 @@ def get_history_manager(memory_system=None) -> HistoryManager:
     
     return _history_manager
 
-def reset_history_manager():
-    """Reset the global history manager (for testing)"""
-    global _history_manager
-    _history_manager = None
+# def reset_history_manager():
+#     """Reset the global history manager (for testing)"""
+#     global _history_manager
+#     _history_manager = None

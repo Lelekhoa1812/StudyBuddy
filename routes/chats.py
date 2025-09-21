@@ -521,6 +521,14 @@ async def _chat_impl(
                     "timestamp": time.time()
                 }
             )
+            
+            # Trigger memory consolidation if needed
+            try:
+                consolidation_result = await memory.consolidate_memories(user_id, nvidia_rotator)
+                if consolidation_result.get("consolidated", 0) > 0:
+                    logger.info(f"[CHAT] Memory consolidated: {consolidation_result}")
+            except Exception as e:
+                logger.warning(f"[CHAT] Memory consolidation failed: {e}")
     except Exception as e:
         logger.warning(f"QA summarize/store failed: {e}")
     # Merge web sources if any (normalize to filename=url for frontend display)

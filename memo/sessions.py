@@ -236,7 +236,7 @@ def get_session_manager() -> SessionManager:
     
     return _session_manager
 
-def reset_session_manager():
-    """Reset the global session manager (for testing)"""
-    global _session_manager
-    _session_manager = None
+# def reset_session_manager():
+#     """Reset the global session manager (for testing)"""
+#     global _session_manager
+#     _session_manager = None

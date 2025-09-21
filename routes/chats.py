@@ -8,6 +8,7 @@ from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator,
 from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from .search import build_web_context
+from memo.context import enhance_question_with_memory
 from utils.api.router import select_model, generate_answer_with_model
 
 
@@ -235,6 +236,12 @@ async def _chat_impl(
     # Update status: Receiving request
     if session_id:
         update_chat_status(session_id, "receiving", "Receiving request...", 5)
+    
+    # Step 1: Retrieve and enhance prompt with conversation history FIRST
+    enhanced_question, memory_context = await enhance_question_with_memory(
+        user_id, question, memory, nvidia_rotator, embedder
+    )
+    logger.info(f"[CHAT] Enhanced question with memory context: {len(memory_context)} chars")
 
     mentioned = set([m.group(0).strip() for m in re.finditer(r"\b[^\s/\\]+?\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
     if mentioned:
@@ -279,7 +286,8 @@ async def _chat_impl(
     try:
         from memo.history import get_history_manager
         history_manager = get_history_manager(memory)
-        relevant_map = await history_manager.files_relevance(question, files_list, nvidia_rotator)
+        # Use enhanced question for better file relevance detection
+        relevant_map = await history_manager.files_relevance(enhanced_question, files_list, nvidia_rotator)
         relevant_files = [fn for fn, ok in relevant_map.items() if ok]
         logger.info(f"[CHAT] NVIDIA relevant files: {relevant_files}")
     except Exception as e:
@@ -344,7 +352,8 @@ async def _chat_impl(
     if session_id:
         update_chat_status(session_id, "processing", "Processing data...", 15)
     
-    enhanced_queries = await _generate_query_variations(question, nvidia_rotator)
+    # Use enhanced question for better query variations
+    enhanced_queries = await _generate_query_variations(enhanced_question, nvidia_rotator)
     logger.info(f"[CHAT] Generated {len(enhanced_queries)} query variations")
     
     # Update status: Planning action (planning search strategy)
@@ -463,7 +472,8 @@ async def _chat_impl(
                 if session_id:
                     update_chat_status(session_id, status, message, progress)
             
-            web_context_block, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10, status_callback=web_status_callback)
+            # Use enhanced question for better web search
+            web_context_block, web_sources_meta = await build_web_context(enhanced_question, max_web=max_web, top_k=10, status_callback=web_status_callback)
         except Exception as e:
             logger.warning(f"[CHAT] Web augmentation failed: {e}")
 
@@ -499,7 +509,8 @@ async def _chat_impl(
     if session_id:
         update_chat_status(session_id, "thinking", "Thinking solution...", 60)
     
-    user_prompt = f"QUESTION:\n{question}\n\nCONTEXT:\n{composed_context}"
+    # Use enhanced question for better answer generation
+    user_prompt = f"QUESTION:\n{enhanced_question}\n\nCONTEXT:\n{composed_context}"
     selection = select_model(question=question, context=composed_context)
     logger.info(f"Model selection: {selection}")
     logger.info(f"[CHAT] Generating answer with {selection['provider']} {selection['model']}")
@@ -629,8 +640,15 @@ async def chat_with_search(
     # 1) Reuse local RAG retrieval
     local_resp = await _chat_impl(user_id, project_id, question, k, use_web=1, max_web=max_web, session_id=session_id)
 
-    # 2) Web search and fetching via shared utilities
-    web_context, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10)
+    # 2) Get enhanced question for web search
+    memory = get_memory_system()
+    enhanced_question, memory_context = await enhance_question_with_memory(
+        user_id, question, memory, nvidia_rotator, embedder
+    )
+
+    # 3) Web search and fetching via shared utilities
+    # Use enhanced question for better web search
+    web_context, web_sources_meta = await build_web_context(enhanced_question, max_web=max_web, top_k=10)
     if not web_context:
         return local_resp
 

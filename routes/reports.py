@@ -1,11 +1,12 @@
 # routes/reports.py
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Tuple, Any
 from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, gemini_rotator, nvidia_rotator
 from .search import build_web_context
+from memo.context import enhance_instructions_with_memory
 from helpers.models import ReportResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
@@ -28,6 +29,7 @@ def update_report_status(session_id: str, status: str, message: str, progress: i
         "progress": progress
     }
 
+
 @app.post("/report", response_model=ReportResponse)
 async def generate_report(
     user_id: str = Form(...),
@@ -49,6 +51,14 @@ async def generate_report(
     # Update status: Receiving request
     update_report_status(session_id, "receiving", "Receiving request...", 5)
     
+    # Step 1: Retrieve and enhance prompt with conversation history FIRST
+    from memo.core import get_memory_system
+    memory = get_memory_system()
+    enhanced_instructions, memory_context = await enhance_instructions_with_memory(
+        user_id, instructions, memory, nvidia_rotator, embedder
+    )
+    logger.info(f"[REPORT] Enhanced instructions with memory context: {len(memory_context)} chars")
+    
     files_list = rag.list_files(user_id=user_id, project_id=project_id)
     filenames_ci = {f.get("filename", "").lower(): f.get("filename") for f in files_list}
     eff_name = filenames_ci.get(filename.lower(), filename)
@@ -57,8 +67,8 @@ async def generate_report(
         raise HTTPException(404, detail="No summary found for that file.")
 
     query_text = f"Comprehensive report for {eff_name}"
-    if instructions.strip():
-        query_text = f"{instructions} {eff_name}"
+    if enhanced_instructions.strip():
+        query_text = f"{enhanced_instructions} {eff_name}"
     q_vec = embedder.embed([query_text])[0]
     hits = rag.vector_search(user_id=user_id, project_id=project_id, query_vector=q_vec, k=8, filenames=[eff_name], search_type="flat")
     if not hits:
@@ -85,15 +95,17 @@ async def generate_report(
         def web_status_callback(status, message, progress):
             update_report_status(session_id, status, message, progress)
         
+        # Use enhanced instructions for better web search
         web_context_block, web_sources_meta = await build_web_context(
-            instructions or query_text, max_web=max_web, top_k=12, status_callback=web_status_callback
+            enhanced_instructions or query_text, max_web=max_web, top_k=12, status_callback=web_status_callback
         )
     file_summary = doc_sum.get("summary", "")
 
     # Step 1: Chain of Thought Planning with NVIDIA
     logger.info("[REPORT] Starting CoT planning phase")
     update_report_status(session_id, "planning", "Planning action...", 25)
-    cot_plan = await generate_cot_plan(instructions, file_summary, context_text, web_context_block, nvidia_rotator)
+    # Use enhanced instructions for better CoT planning
+    cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator)
     
     # Step 2: Execute detailed subtasks based on CoT plan
     logger.info("[REPORT] Executing detailed subtasks")
@@ -103,8 +115,9 @@ async def generate_report(
     # Step 3: Synthesize comprehensive report from detailed analysis
     logger.info("[REPORT] Synthesizing comprehensive report")
     update_report_status(session_id, "thinking", "Thinking solution...", 60)
+    # Use enhanced instructions for better report synthesis
     comprehensive_report = await synthesize_comprehensive_report(
-        instructions, cot_plan, detailed_analysis, eff_name, report_words, gemini_rotator, nvidia_rotator
+        enhanced_instructions, cot_plan, detailed_analysis, eff_name, report_words, gemini_rotator, nvidia_rotator
     )
     
     # Update status: Generating answer (final report generation)

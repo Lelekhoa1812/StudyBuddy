@@ -156,44 +156,67 @@ async def generate_report_pdf(
 
 async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator) -> Dict[str, Any]:
     """Generate a detailed Chain of Thought plan for report generation using NVIDIA."""
-    sys_prompt = """You are an expert research analyst and report planner. Given a user's request and available materials, create a comprehensive plan for generating a detailed report.
+    sys_prompt = """You are an expert research analyst and report planner. Given a user's request and available materials, create a comprehensive plan for generating a detailed, professional report.
 
 Your task is to:
-1. Analyze the user's request and identify key requirements
-2. Break down the report into logical sections and subtasks
-3. Identify what specific information needs to be extracted from each source
-4. Plan the reasoning flow and argument structure
-5. Determine the depth and rigor needed for each section
+1. Deeply analyze the user's request and identify ALL key requirements and sub-requirements
+2. Break down the report into logical sections with detailed subtasks
+3. Identify specific information extraction needs from each source type
+4. Plan comprehensive reasoning flow and argument structure
+5. Determine appropriate depth and rigor for each section
+6. Create detailed sub-action plans for each major section
+7. Plan cross-referencing and synthesis strategies
+8. Identify potential gaps and additional research needs
 
 Return a JSON object with this structure:
 {
   "analysis": {
-    "user_intent": "What the user really wants to know",
-    "key_requirements": ["requirement1", "requirement2"],
-    "complexity_level": "basic|intermediate|advanced",
-    "focus_areas": ["area1", "area2", "area3"]
+    "user_intent": "Detailed analysis of what the user really wants to know",
+    "key_requirements": ["primary_requirement1", "secondary_requirement2", "implicit_requirement3"],
+    "complexity_level": "basic|intermediate|advanced|expert",
+    "focus_areas": ["primary_area1", "secondary_area2", "supporting_area3"],
+    "target_audience": "academic|business|technical|general",
+    "report_scope": "comprehensive|focused|executive_summary",
+    "quality_standards": ["academic_rigor", "practical_applicability", "completeness"]
   },
   "report_structure": {
     "sections": [
       {
         "title": "Section Title",
-        "purpose": "Why this section is needed",
+        "purpose": "Detailed explanation of why this section is needed",
+        "priority": "critical|important|supporting",
+        "estimated_length": "short|medium|long",
         "subtasks": [
           {
-            "task": "Specific task description",
-            "reasoning": "Why this task is important",
+            "task": "Specific, detailed task description",
+            "reasoning": "Detailed explanation of why this task is important",
             "sources_needed": ["local", "web", "both"],
-            "depth": "surface|detailed|comprehensive"
+            "depth": "surface|detailed|comprehensive|exhaustive",
+            "sub_actions": [
+              "Specific action 1",
+              "Specific action 2",
+              "Specific action 3"
+            ],
+            "expected_output": "What this subtask should produce",
+            "quality_checks": ["check1", "check2"]
           }
         ]
       }
     ]
   },
   "reasoning_flow": [
-    "Step 1: Start with...",
-    "Step 2: Then analyze...",
-    "Step 3: Finally synthesize..."
-  ]
+    "Step 1: Comprehensive analysis of...",
+    "Step 2: Deep examination of...",
+    "Step 3: Critical evaluation of...",
+    "Step 4: Synthesis and integration of...",
+    "Step 5: Final comprehensive conclusion..."
+  ],
+  "synthesis_strategy": {
+    "cross_referencing": "How to connect information across sections",
+    "evidence_integration": "How to weave together different source types",
+    "argument_development": "How to build a compelling narrative",
+    "conclusion_synthesis": "How to create a powerful conclusion"
+  }
 }"""
 
     user_prompt = f"""USER REQUEST: {instructions}
@@ -259,32 +282,50 @@ Create a detailed plan for generating a comprehensive report that addresses the 
 async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator) -> Dict[str, Any]:
     """Execute detailed analysis for each subtask identified in the CoT plan."""
     detailed_analysis = {}
+    synthesis_strategy = cot_plan.get("synthesis_strategy", {})
     
     for section in cot_plan.get("report_structure", {}).get("sections", []):
         section_title = section.get("title", "Unknown Section")
+        section_priority = section.get("priority", "important")
         section_analysis = {
             "title": section_title,
             "purpose": section.get("purpose", ""),
-            "subtask_results": []
+            "priority": section_priority,
+            "subtask_results": [],
+            "section_synthesis": ""
         }
         
+        # Process each subtask with enhanced detail
         for subtask in section.get("subtasks", []):
             task = subtask.get("task", "")
             reasoning = subtask.get("reasoning", "")
             sources_needed = subtask.get("sources_needed", ["local"])
             depth = subtask.get("depth", "detailed")
+            sub_actions = subtask.get("sub_actions", [])
+            expected_output = subtask.get("expected_output", "")
+            quality_checks = subtask.get("quality_checks", [])
             
-            # Generate detailed analysis for this subtask
-            subtask_result = await analyze_subtask(
-                task, reasoning, sources_needed, depth, context_text, web_context, filename, nvidia_rotator
+            # Generate comprehensive analysis for this subtask
+            subtask_result = await analyze_subtask_comprehensive(
+                task, reasoning, sources_needed, depth, sub_actions, expected_output, 
+                quality_checks, context_text, web_context, filename, nvidia_rotator
             )
             
             section_analysis["subtask_results"].append({
                 "task": task,
                 "reasoning": reasoning,
                 "depth": depth,
+                "sub_actions": sub_actions,
+                "expected_output": expected_output,
+                "quality_checks": quality_checks,
                 "analysis": subtask_result
             })
+        
+        # Generate section-level synthesis
+        section_synthesis = await synthesize_section_analysis(
+            section_analysis, synthesis_strategy, nvidia_rotator
+        )
+        section_analysis["section_synthesis"] = section_synthesis
         
         detailed_analysis[section_title] = section_analysis
     
@@ -292,9 +333,10 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
     return detailed_analysis
 
 
-async def analyze_subtask(task: str, reasoning: str, sources_needed: List[str], depth: str, 
-                         context_text: str, web_context: str, filename: str, nvidia_rotator) -> str:
-    """Analyze a specific subtask with appropriate depth and source selection."""
+async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_needed: List[str], depth: str,
+                                      sub_actions: List[str], expected_output: str, quality_checks: List[str],
+                                      context_text: str, web_context: str, filename: str, nvidia_rotator) -> str:
+    """Analyze a specific subtask with comprehensive detail and sub-actions."""
     
     # Select appropriate context based on sources_needed
     selected_context = ""
@@ -305,34 +347,49 @@ async def analyze_subtask(task: str, reasoning: str, sources_needed: List[str], 
     elif "web" in sources_needed:
         selected_context = f"WEB CONTEXT:\n{web_context}"
     
-    # Adjust prompt based on depth requirement
+    # Enhanced depth instructions
     depth_instructions = {
-        "surface": "Provide a brief, high-level analysis",
-        "detailed": "Provide a thorough, well-reasoned analysis with specific examples",
-        "comprehensive": "Provide an exhaustive, rigorous analysis with deep insights and multiple perspectives"
+        "surface": "Provide a brief, high-level analysis with key points",
+        "detailed": "Provide a thorough, well-reasoned analysis with specific examples, evidence, and clear explanations",
+        "comprehensive": "Provide an exhaustive, rigorous analysis with deep insights, multiple perspectives, and extensive evidence",
+        "exhaustive": "Provide the most comprehensive analysis possible with exhaustive detail, multiple angles, critical evaluation, and extensive supporting evidence"
     }
     
-    sys_prompt = f"""You are an expert analyst performing detailed research. Your task is to {task}.
+    sub_actions_text = "\n".join([f"- {action}" for action in sub_actions]) if sub_actions else "No specific sub-actions defined"
+    quality_checks_text = "\n".join([f"- {check}" for check in quality_checks]) if quality_checks else "No specific quality checks defined"
+    
+    sys_prompt = f"""You are an expert analyst performing comprehensive research. Your task is to {task}.
 
 REASONING: {reasoning}
 
 DEPTH REQUIREMENT: {depth_instructions.get(depth, "Provide detailed analysis")}
 
-Focus on:
-- Extracting specific, relevant information
-- Providing clear explanations and insights
-- Supporting claims with evidence from the materials
-- Maintaining analytical rigor and objectivity
-- Being comprehensive yet concise
+SUB-ACTIONS TO PERFORM:
+{sub_actions_text}
 
-Return only the analysis, no meta-commentary."""
+EXPECTED OUTPUT: {expected_output}
+
+QUALITY CHECKS:
+{quality_checks_text}
+
+Focus on:
+- Extracting specific, relevant information with precision
+- Providing clear, detailed explanations and insights
+- Supporting all claims with concrete evidence from the materials
+- Maintaining the highest analytical rigor and objectivity
+- Being comprehensive and thorough while remaining focused
+- Following the sub-actions systematically
+- Meeting the expected output requirements
+- Passing all quality checks
+
+Return only the analysis, no meta-commentary or introductory phrases."""
 
     user_prompt = f"""TASK: {task}
 
 MATERIALS:
 {selected_context}
 
-Perform the analysis as specified."""
+Perform the comprehensive analysis as specified, following all sub-actions and meeting quality standards."""
 
     try:
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
@@ -340,8 +397,59 @@ Perform the analysis as specified."""
         return analysis.strip()
         
     except Exception as e:
-        logger.warning(f"[REPORT] Subtask analysis failed for '{task}': {e}")
+        logger.warning(f"[REPORT] Comprehensive subtask analysis failed for '{task}': {e}")
         return f"Analysis for '{task}' could not be completed due to processing error."
+
+
+async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator) -> str:
+    """Synthesize all subtask results within a section into a coherent analysis."""
+    
+    section_title = section_analysis.get("title", "Unknown Section")
+    section_purpose = section_analysis.get("purpose", "")
+    subtask_results = section_analysis.get("subtask_results", [])
+    
+    # Prepare subtask summaries
+    subtask_summaries = ""
+    for i, result in enumerate(subtask_results, 1):
+        task = result.get("task", "")
+        analysis = result.get("analysis", "")
+        subtask_summaries += f"\n### Subtask {i}: {task}\n{analysis}\n"
+    
+    sys_prompt = f"""You are an expert synthesis analyst. Your task is to synthesize multiple detailed analyses into a coherent, comprehensive section.
+
+SECTION: {section_title}
+PURPOSE: {section_purpose}
+
+SYNTHESIS STRATEGY:
+- Cross-referencing: {synthesis_strategy.get('cross_referencing', 'Connect related information across subtasks')}
+- Evidence integration: {synthesis_strategy.get('evidence_integration', 'Weave together different types of evidence')}
+- Argument development: {synthesis_strategy.get('argument_development', 'Build a compelling narrative flow')}
+
+Focus on:
+- Creating logical flow between subtask results
+- Identifying key themes and patterns
+- Highlighting important insights and findings
+- Ensuring comprehensive coverage of the section purpose
+- Maintaining analytical rigor and coherence
+- Building toward a strong section conclusion
+
+Return only the synthesized analysis, no meta-commentary."""
+
+    user_prompt = f"""SECTION: {section_title}
+
+DETAILED SUBTASK ANALYSES:
+{subtask_summaries}
+
+Synthesize these analyses into a comprehensive, coherent section that fulfills the section purpose."""
+
+    try:
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        return synthesis.strip()
+        
+    except Exception as e:
+        logger.warning(f"[REPORT] Section synthesis failed for '{section_title}': {e}")
+        return f"Synthesis for '{section_title}' could not be completed due to processing error."
 
 
 async def synthesize_comprehensive_report(instructions: str, cot_plan: Dict[str, Any], 
@@ -349,53 +457,86 @@ async def synthesize_comprehensive_report(instructions: str, cot_plan: Dict[str,
                                         report_words: int, gemini_rotator, nvidia_rotator) -> str:
     """Synthesize the detailed analysis into a comprehensive, well-structured report."""
     
-    # Prepare synthesis materials
+    # Prepare comprehensive synthesis materials
     analysis_summary = ""
+    synthesis_strategy = cot_plan.get("synthesis_strategy", {})
+    
     for section_title, section_data in detailed_analysis.items():
         analysis_summary += f"\n## {section_title}\n"
-        analysis_summary += f"Purpose: {section_data.get('purpose', '')}\n\n"
+        analysis_summary += f"Purpose: {section_data.get('purpose', '')}\n"
+        analysis_summary += f"Priority: {section_data.get('priority', 'important')}\n\n"
         
+        # Include section synthesis if available
+        section_synthesis = section_data.get("section_synthesis", "")
+        if section_synthesis:
+            analysis_summary += f"### Section Synthesis:\n{section_synthesis}\n\n"
+        
+        # Include detailed subtask results
         for subtask_result in section_data.get("subtask_results", []):
             analysis_summary += f"### {subtask_result.get('task', '')}\n"
-            analysis_summary += f"{subtask_result.get('analysis', '')}\n\n"
+            analysis_summary += f"Depth: {subtask_result.get('depth', 'detailed')}\n"
+            analysis_summary += f"Analysis: {subtask_result.get('analysis', '')}\n\n"
     
     reasoning_flow = cot_plan.get("reasoning_flow", [])
     flow_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(reasoning_flow)])
     
-    sys_prompt = f"""You are an expert report writer synthesizing detailed analysis into a comprehensive report.
+    # Enhanced synthesis strategy
+    cross_referencing = synthesis_strategy.get("cross_referencing", "Connect related information across sections")
+    evidence_integration = synthesis_strategy.get("evidence_integration", "Weave together different source types")
+    argument_development = synthesis_strategy.get("argument_development", "Build a compelling narrative")
+    conclusion_synthesis = synthesis_strategy.get("conclusion_synthesis", "Create a powerful conclusion")
+    
+    sys_prompt = f"""You are an expert report writer synthesizing detailed analysis into a comprehensive, professional report.
 
-Your task is to create a well-structured, professional report that:
+Your task is to create a well-structured, authoritative report that:
 1. Follows the planned reasoning flow: {flow_text}
-2. Integrates all detailed analyses seamlessly
-3. Maintains logical flow and coherence
-4. Provides clear, actionable insights
-5. Uses proper academic/professional formatting
-6. Targets approximately {report_words} words
+2. Integrates all detailed analyses seamlessly with sophisticated synthesis
+3. Maintains logical flow and coherence throughout
+4. Provides clear, actionable insights and recommendations
+5. Uses proper academic/professional formatting and structure
+6. Targets approximately {report_words} words with comprehensive coverage
+7. Demonstrates analytical rigor and depth
 
-Structure the report with:
-- Clear section headings
-- Logical progression of ideas
+SYNTHESIS REQUIREMENTS:
+- Cross-referencing: {cross_referencing}
+- Evidence integration: {evidence_integration}
+- Argument development: {argument_development}
+- Conclusion synthesis: {conclusion_synthesis}
+
+STRUCTURE REQUIREMENTS:
+- Executive summary with key findings
+- Clear section headings with logical progression
 - Smooth transitions between sections
-- Proper citations and references
-- Executive summary or key takeaways
-- Conclusion with actionable insights
+- Proper citations and references throughout
+- Data-driven insights and evidence-based conclusions
+- Actionable recommendations where appropriate
+- Professional, analytical tone
 
-Write in a professional, analytical tone suitable for business or academic contexts."""
+CRITICAL: Start the report immediately with substantive content. Do NOT include meta-commentary like "Here is a comprehensive report..." or "Of course, here is...". Begin directly with the report title and content."""
 
     user_prompt = f"""USER REQUEST: {instructions}
 
-DETAILED ANALYSIS TO SYNTHESIZE:
+COMPREHENSIVE ANALYSIS TO SYNTHESIZE:
 {analysis_summary}
 
 REASONING FLOW TO FOLLOW:
 {flow_text}
 
-Create a comprehensive report that addresses the user's request by synthesizing all the detailed analysis above."""
+SYNTHESIS STRATEGY:
+- Cross-referencing: {cross_referencing}
+- Evidence integration: {evidence_integration}
+- Argument development: {argument_development}
+- Conclusion synthesis: {conclusion_synthesis}
+
+Create a comprehensive, authoritative report that addresses the user's request by synthesizing all the detailed analysis above. Begin immediately with the report title and substantive content."""
 
     try:
         # Use Gemini Pro for final synthesis (better for long-form content)
         selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
         report = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        
+        # Post-process to remove any remaining meta-commentary
+        report = remove_meta_commentary(report)
         
         logger.info(f"[REPORT] Comprehensive report synthesized, length: {len(report)} characters")
         return report
@@ -403,9 +544,38 @@ Create a comprehensive report that addresses the user's request by synthesizing 
     except Exception as e:
         logger.error(f"[REPORT] Report synthesis failed: {e}")
         # Fallback: simple concatenation
-        fallback_report = f"# Report: {instructions}\n\n"
+        fallback_report = f"# {instructions}\n\n"
         fallback_report += analysis_summary
-        fallback_report += f"\n\n## Conclusion\n\nThis report addresses: {instructions}"
+        fallback_report += f"\n\n## Conclusion\n\n{instructions}"
         return fallback_report
+
+
+def remove_meta_commentary(text: str) -> str:
+    """Remove common meta-commentary phrases from the beginning of reports."""
+    meta_phrases = [
+        "Of course. Here is a comprehensive report",
+        "Here is a comprehensive report",
+        "Of course, here is",
+        "Here is",
+        "I'll provide you with",
+        "I will now provide",
+        "Let me provide you with",
+        "I can provide you with",
+        "I'll create a comprehensive report",
+        "I will create a comprehensive report",
+        "Let me create a comprehensive report",
+        "I can create a comprehensive report"
+    ]
+    
+    text = text.strip()
+    for phrase in meta_phrases:
+        if text.startswith(phrase):
+            text = text[len(phrase):].strip()
+            # Remove any trailing periods and clean up
+            if text.startswith("."):
+                text = text[1:].strip()
+            break
+    
+    return text
 
 

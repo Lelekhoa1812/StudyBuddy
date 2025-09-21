@@ -479,6 +479,8 @@ async def _chat_impl(
         "Only say 'I don't know based on the provided materials.' when the question requires specific facts that are absent.\n"
         "Always include citations to provided materials when you use them, formatted as (source: actual_filename, topic).\n"
         "Use the exact filename as provided in the context, not placeholders.\n"
+        "Provide direct, substantive answers without meta-commentary like 'Here is...'.\n"
+        "Start your response immediately with the actual answer content.\n"
     )
 
     history_block = ""

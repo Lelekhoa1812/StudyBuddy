@@ -36,25 +36,7 @@ async def semantic_context(question: str, memories: List[str], embedder: Embeddi
         logger.error(f"[CONTEXT_MANAGER] Semantic context failed: {e}")
         return ""
 
-async def get_conversation_context(user_id: str, question: str, memory_system, 
-                                 embedder: EmbeddingClient, topk_sem: int = 3) -> Tuple[str, str]:
-    """
-    Get both recent and semantic context for conversation continuity.
-    Enhanced version that uses semantic similarity for better context selection.
-    """
-    try:
-        if memory_system and memory_system.is_enhanced_available():
-            # Use enhanced context retrieval
-            recent_context, semantic_context = await memory_system.get_conversation_context(
-                user_id, question
-            )
-            return recent_context, semantic_context
-        else:
-            # Fallback to legacy context with enhanced semantic selection
-            return await get_legacy_context(user_id, question, memory_system, embedder, topk_sem)
-    except Exception as e:
-        logger.error(f"[CONTEXT_MANAGER] Context retrieval failed: {e}")
-        return "", ""
+# get_conversation_context function removed - use memory_system.get_conversation_context() instead
 
 async def get_legacy_context(user_id: str, question: str, memory_system, 
                            embedder: EmbeddingClient, topk_sem: int) -> Tuple[str, str]:

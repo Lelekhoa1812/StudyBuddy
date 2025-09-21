@@ -98,6 +98,47 @@ class ConversationManager:
             logger.info(f"[CONVERSATION_MANAGER] Cleared session for user {user_id}")
         except Exception as e:
             logger.error(f"[CONVERSATION_MANAGER] Failed to clear session: {e}")
+    
+    def reset_all(self, user_id: str, project_id: str = None) -> Dict[str, Any]:
+        """Reset all conversation-related components for a user"""
+        try:
+            results = {
+                "session_cleared": False,
+                "memory_cleared": False,
+                "errors": []
+            }
+            
+            # Clear session
+            try:
+                self.session_manager.clear_session(user_id)
+                results["session_cleared"] = True
+                logger.info(f"[CONVERSATION_MANAGER] Cleared session for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to clear session: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CONVERSATION_MANAGER] {error_msg}")
+            
+            # Clear memory using core memory system
+            try:
+                clear_results = self.memory_system.clear_all_memory(user_id, project_id)
+                results["memory_cleared"] = clear_results.get("legacy_cleared", False) and clear_results.get("session_cleared", False)
+                if clear_results.get("errors"):
+                    results["errors"].extend(clear_results["errors"])
+                logger.info(f"[CONVERSATION_MANAGER] Cleared memory for user {user_id}, project {project_id}")
+            except Exception as e:
+                error_msg = f"Failed to clear memory: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CONVERSATION_MANAGER] {error_msg}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"[CONVERSATION_MANAGER] Failed to reset all for user {user_id}: {e}")
+            return {
+                "session_cleared": False,
+                "memory_cleared": False,
+                "errors": [f"Critical error: {e}"]
+            }
 
 
 # ────────────────────────────── Global Instance ──────────────────────────────

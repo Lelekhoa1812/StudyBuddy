@@ -159,6 +159,16 @@ class PersistentMemory:
             logger.error(f"[PERSISTENT_MEMORY] Failed to clear user memories: {e}")
             return 0
     
+    def clear_project_memories(self, user_id: str, project_id: str) -> int:
+        """Clear all memories for a specific user and project"""
+        try:
+            result = self.memories.delete_many({"user_id": user_id, "project_id": project_id})
+            logger.info(f"[PERSISTENT_MEMORY] Cleared {result.deleted_count} memories for user {user_id}, project {project_id}")
+            return result.deleted_count
+        except Exception as e:
+            logger.error(f"[PERSISTENT_MEMORY] Failed to clear project memories: {e}")
+            return 0
+    
     def get_memory_stats(self, user_id: str) -> Dict[str, Any]:
         """Get memory statistics for a user"""
         try:

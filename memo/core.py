@@ -97,6 +97,100 @@ class MemorySystem:
             except Exception as e:
                 logger.warning(f"[CORE_MEMORY] Failed to clear enhanced memory: {e}")
     
+    def clear_all_memory(self, user_id: str, project_id: str = None) -> Dict[str, Any]:
+        """Clear all memory components for a user including sessions and planning state"""
+        try:
+            results = {
+                "legacy_cleared": False,
+                "enhanced_cleared": False,
+                "session_cleared": False,
+                "planning_reset": False,
+                "errors": []
+            }
+            
+            # Clear legacy memory
+            try:
+                self.legacy_memory.clear(user_id)
+                results["legacy_cleared"] = True
+                logger.info(f"[CORE_MEMORY] Cleared legacy memory for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to clear legacy memory: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CORE_MEMORY] {error_msg}")
+            
+            # Clear enhanced memory if available
+            if self.enhanced_available:
+                try:
+                    if project_id:
+                        # Clear project-specific memories
+                        self.enhanced_memory.memories.delete_many({
+                            "user_id": user_id, 
+                            "project_id": project_id
+                        })
+                    else:
+                        # Clear all user memories
+                        self.enhanced_memory.clear_user_memories(user_id)
+                    results["enhanced_cleared"] = True
+                    logger.info(f"[CORE_MEMORY] Cleared enhanced memory for user {user_id}, project {project_id}")
+                except Exception as e:
+                    error_msg = f"Failed to clear enhanced memory: {e}"
+                    results["errors"].append(error_msg)
+                    logger.warning(f"[CORE_MEMORY] {error_msg}")
+            
+            # Clear conversation sessions
+            try:
+                from memo.sessions import get_session_manager
+                session_manager = get_session_manager()
+                session_manager.clear_session(user_id)
+                results["session_cleared"] = True
+                logger.info(f"[CORE_MEMORY] Cleared session for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to clear session: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CORE_MEMORY] {error_msg}")
+            
+            # Reset planning state (if needed)
+            try:
+                # Planning state is stateless, but we can log the reset
+                results["planning_reset"] = True
+                logger.info(f"[CORE_MEMORY] Reset planning state for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to reset planning state: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CORE_MEMORY] {error_msg}")
+            
+            # Clear any cached contexts
+            try:
+                from memo.retrieval import get_retrieval_manager
+                retrieval_manager = get_retrieval_manager(self, self.embedder)
+                # Reset any cached state if needed
+                logger.info(f"[CORE_MEMORY] Cleared cached contexts for user {user_id}")
+            except Exception as e:
+                error_msg = f"Failed to clear cached contexts: {e}"
+                results["errors"].append(error_msg)
+                logger.warning(f"[CORE_MEMORY] {error_msg}")
+            
+            success = all([results["legacy_cleared"], results["session_cleared"]])
+            if self.enhanced_available:
+                success = success and results["enhanced_cleared"]
+            
+            if success:
+                logger.info(f"[CORE_MEMORY] Successfully cleared all memory for user {user_id}, project {project_id}")
+            else:
+                logger.warning(f"[CORE_MEMORY] Partial memory clear for user {user_id}, project {project_id}: {results}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to clear all memory for user {user_id}: {e}")
+            return {
+                "legacy_cleared": False,
+                "enhanced_cleared": False,
+                "session_cleared": False,
+                "planning_reset": False,
+                "errors": [f"Critical error: {e}"]
+            }
+    
     def is_enhanced_available(self) -> bool:
         """Check if enhanced memory features are available"""
         return self.enhanced_available

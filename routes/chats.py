@@ -77,19 +77,88 @@ async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
 @app.delete("/chat/history", response_model=MessageResponse)
 async def delete_chat_history(user_id: str, project_id: str):
     try:
-        rag.db["chat_sessions"].delete_many({"user_id": user_id, "project_id": project_id})
-        logger.info(f"[CHAT] Cleared history for user {user_id} project {project_id}")
-        # Also clear in-memory LRU for this user to avoid stale context
+        # Clear chat sessions from database
+        chat_result = rag.db["chat_sessions"].delete_many({"user_id": user_id, "project_id": project_id})
+        logger.info(f"[CHAT] Cleared {chat_result.deleted_count} chat sessions for user {user_id} project {project_id}")
+        
+        # Clear all memory components using the new comprehensive clear method
         try:
             from memo.core import get_memory_system
             memory = get_memory_system()
-            memory.clear(user_id)
-            logger.info(f"[CHAT] Cleared memory for user {user_id}")
+            clear_results = memory.clear_all_memory(user_id, project_id)
+            
+            # Log the results
+            if clear_results["errors"]:
+                logger.warning(f"[CHAT] Memory clear completed with warnings: {clear_results['errors']}")
+            else:
+                logger.info(f"[CHAT] Memory clear completed successfully for user {user_id}, project {project_id}")
+                
+            # Prepare response message
+            cleared_components = []
+            if clear_results["legacy_cleared"]:
+                cleared_components.append("legacy memory")
+            if clear_results["enhanced_cleared"]:
+                cleared_components.append("enhanced memory")
+            if clear_results["session_cleared"]:
+                cleared_components.append("conversation sessions")
+            if clear_results["planning_reset"]:
+                cleared_components.append("planning state")
+            
+            message = f"Chat history cleared successfully. Cleared: {', '.join(cleared_components)}"
+            if clear_results["errors"]:
+                message += f" (Warnings: {len(clear_results['errors'])} issues)"
+                
         except Exception as me:
             logger.warning(f"[CHAT] Failed to clear memory for user {user_id}: {me}")
-        return MessageResponse(message="Chat history cleared")
+            message = "Chat history cleared (memory clear failed)"
+        
+        return MessageResponse(message=message)
     except Exception as e:
         raise HTTPException(500, detail=f"Failed to clear chat history: {str(e)}")
+
+
+@app.delete("/chat/history/all", response_model=MessageResponse)
+async def delete_all_chat_history(user_id: str):
+    """Clear all chat history and memory for a user across all projects"""
+    try:
+        # Clear all chat sessions from database
+        chat_result = rag.db["chat_sessions"].delete_many({"user_id": user_id})
+        logger.info(f"[CHAT] Cleared {chat_result.deleted_count} chat sessions for user {user_id} across all projects")
+        
+        # Clear all memory components using the comprehensive clear method (no project_id = all projects)
+        try:
+            from memo.core import get_memory_system
+            memory = get_memory_system()
+            clear_results = memory.clear_all_memory(user_id, None)  # None = all projects
+            
+            # Log the results
+            if clear_results["errors"]:
+                logger.warning(f"[CHAT] Global memory clear completed with warnings: {clear_results['errors']}")
+            else:
+                logger.info(f"[CHAT] Global memory clear completed successfully for user {user_id}")
+                
+            # Prepare response message
+            cleared_components = []
+            if clear_results["legacy_cleared"]:
+                cleared_components.append("legacy memory")
+            if clear_results["enhanced_cleared"]:
+                cleared_components.append("enhanced memory")
+            if clear_results["session_cleared"]:
+                cleared_components.append("conversation sessions")
+            if clear_results["planning_reset"]:
+                cleared_components.append("planning state")
+            
+            message = f"All chat history cleared successfully. Cleared: {', '.join(cleared_components)}"
+            if clear_results["errors"]:
+                message += f" (Warnings: {len(clear_results['errors'])} issues)"
+                
+        except Exception as me:
+            logger.warning(f"[CHAT] Failed to clear global memory for user {user_id}: {me}")
+            message = "All chat history cleared (memory clear failed)"
+        
+        return MessageResponse(message=message)
+    except Exception as e:
+        raise HTTPException(500, detail=f"Failed to clear all chat history: {str(e)}")
 
 
 # In-memory status tracking for real-time updates

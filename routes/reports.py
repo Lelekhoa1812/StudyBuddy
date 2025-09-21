@@ -1,7 +1,7 @@
 # routes/reports.py
 import os
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Any
 from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, gemini_rotator, nvidia_rotator

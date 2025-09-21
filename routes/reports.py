@@ -6,7 +6,7 @@ from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, gemini_rotator, nvidia_rotator
 from .search import build_web_context
-from memo.context import enhance_instructions_with_memory
+# Removed: enhance_instructions_with_memory - now handled by conversation manager
 from helpers.models import ReportResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
@@ -46,17 +46,34 @@ async def generate_report(
     if not session_id:
         session_id = str(uuid.uuid4())
     
+    # Initialize memory system
+    from memo.core import get_memory_system
+    memory = get_memory_system()
+    
     logger.info("[REPORT] User Q/report: %s", trim_text(instructions, 15).replace("\n", " "))
     
     # Update status: Receiving request
     update_report_status(session_id, "receiving", "Receiving request...", 5)
     
-    # Step 1: Retrieve and enhance prompt with conversation history FIRST
-    from memo.core import get_memory_system
-    memory = get_memory_system()
-    enhanced_instructions, memory_context = await enhance_instructions_with_memory(
-        user_id, instructions, memory, nvidia_rotator, embedder
-    )
+    # Get smart context with conversation management
+    try:
+        recent_context, semantic_context, context_metadata = await memory.get_smart_context(
+            user_id, instructions, nvidia_rotator, project_id, "report"
+        )
+        logger.info(f"[REPORT] Smart context retrieved: recent={len(recent_context)}, semantic={len(semantic_context)}")
+        
+        # Check for context switch
+        context_switch_info = await memory.handle_context_switch(user_id, instructions, nvidia_rotator)
+        if context_switch_info.get("is_context_switch", False):
+            logger.info(f"[REPORT] Context switch detected (confidence: {context_switch_info.get('confidence', 0):.2f})")
+    except Exception as e:
+        logger.warning(f"[REPORT] Smart context failed, using fallback: {e}")
+        recent_context, semantic_context = "", ""
+        context_metadata = {}
+    
+    # Use enhanced instructions from smart context if available
+    enhanced_instructions = context_metadata.get("enhanced_input", instructions)
+    memory_context = recent_context + "\n\n" + semantic_context if recent_context or semantic_context else ""
     logger.info(f"[REPORT] Enhanced instructions with memory context: {len(memory_context)} chars")
     
     files_list = rag.list_files(user_id=user_id, project_id=project_id)

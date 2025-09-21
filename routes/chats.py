@@ -8,7 +8,7 @@ from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator,
 from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from .search import build_web_context
-from memo.context import enhance_question_with_memory
+# Removed: enhance_question_with_memory - now handled by conversation manager
 from utils.api.router import select_model, generate_answer_with_model
 
 
@@ -237,10 +237,25 @@ async def _chat_impl(
     if session_id:
         update_chat_status(session_id, "receiving", "Receiving request...", 5)
     
-    # Step 1: Retrieve and enhance prompt with conversation history FIRST
-    enhanced_question, memory_context = await enhance_question_with_memory(
-        user_id, question, memory, nvidia_rotator, embedder
-    )
+    # Step 1: Retrieve and enhance prompt with conversation history FIRST with conversation management
+    try:
+        recent_context, semantic_context, context_metadata = await memory.get_smart_context(
+            user_id, question, nvidia_rotator, project_id, "chat"
+        )
+        logger.info(f"[CHAT] Smart context retrieved: recent={len(recent_context)}, semantic={len(semantic_context)}")
+        
+        # Check for context switch
+        context_switch_info = await memory.handle_context_switch(user_id, question, nvidia_rotator)
+        if context_switch_info.get("is_context_switch", False):
+            logger.info(f"[CHAT] Context switch detected (confidence: {context_switch_info.get('confidence', 0):.2f})")
+    except Exception as e:
+        logger.warning(f"[CHAT] Smart context failed, using fallback: {e}")
+        recent_context, semantic_context = "", ""
+        context_metadata = {}
+    
+    # Use enhanced question from smart context if available
+    enhanced_question = context_metadata.get("enhanced_input", question)
+    memory_context = recent_context + "\n\n" + semantic_context if recent_context or semantic_context else ""
     logger.info(f"[CHAT] Enhanced question with memory context: {len(memory_context)} chars")
 
     mentioned = set([m.group(0).strip() for m in re.finditer(r"\b[^\s/\\]+?\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
@@ -300,51 +315,9 @@ async def _chat_impl(
         if extra:
             logger.info(f"[CHAT] Forced-include mentioned files into relevance: {extra}")
 
-    try:
-        from memo.history import get_history_manager
-        history_manager = get_history_manager(memory)
-        recent_related, semantic_related = await history_manager.related_recent_and_semantic_context(
-            user_id, question, embedder
-        )
-    except Exception as e:
-        logger.warning(f"[CHAT] Enhanced context retrieval failed, using fallback: {e}")
-        recent3 = memory.recent(user_id, 3)
-        if recent3:
-            sys = "Pick only items that directly relate to the new question. Output the selected items verbatim, no commentary. If none, output nothing."
-            numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
-            user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' values concatenated."
-            try:
-                from utils.api.rotator import robust_post_json
-                key = nvidia_rotator.get_key()
-                url = "https://integrate.api.nvidia.com/v1/chat/completions"
-                payload = {
-                    "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
-                    "temperature": 0.0,
-                    "messages": [
-                        {"role": "system", "content": sys},
-                        {"role": "user", "content": user},
-                    ]
-                }
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key or ''}"}
-                data = await robust_post_json(url, headers, payload, nvidia_rotator)
-                recent_related = data["choices"][0]["message"]["content"].strip()
-            except Exception as e:
-                logger.warning(f"Recent-related NVIDIA error: {e}")
-                recent_related = ""
-        else:
-            recent_related = ""
-        rest17 = memory.rest(user_id, 3)
-        if rest17:
-            import numpy as np
-            def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-                denom = (np.linalg.norm(a) * np.linalg.norm(b)) or 1.0
-                return float(np.dot(a, b) / denom)
-            qv = np.array(embedder.embed([question])[0], dtype="float32")
-            mats = embedder.embed([s.strip() for s in rest17])
-            sims = [(_cosine(qv, np.array(v, dtype="float32")), s) for v, s in zip(mats, rest17)]
-            sims.sort(key=lambda x: x[0], reverse=True)
-            top = [s for (sc, s) in sims[:3] if sc > 0.15]
-            semantic_related = "\n\n".join(top) if top else ""
+    # Use context from smart context management (already retrieved above)
+    recent_related = recent_context
+    semantic_related = semantic_context
 
     logger.info(f"[CHAT] Starting enhanced vector search with relevant_files={relevant_files}")
     

@@ -174,34 +174,54 @@ class MemorySystem:
                 "enhanced_available": False
             }
     
-    async def get_smart_context(self, user_id: str, question: str, 
-                              nvidia_rotator=None, project_id: Optional[str] = None) -> Tuple[str, str]:
-        """Get smart context using both NVIDIA and semantic similarity for optimal memory ability"""
+    async def consolidate_memories(self, user_id: str, nvidia_rotator=None) -> Dict[str, Any]:
+        """Consolidate and prune memories to prevent information overload"""
         try:
-            if self.enhanced_available:
-                # Use enhanced context with NVIDIA integration if available
-                recent_context, semantic_context = await self._get_enhanced_context(user_id, question)
-                
-                # If NVIDIA rotator is available, enhance recent context selection
-                if nvidia_rotator and recent_context:
-                    try:
-                        from memo.nvidia import related_recent_context
-                        recent_memories = self.legacy_memory.recent(user_id, 5)
-                        if recent_memories:
-                            nvidia_recent = await related_recent_context(question, recent_memories, nvidia_rotator)
-                            if nvidia_recent:
-                                recent_context = nvidia_recent
-                    except Exception as e:
-                        logger.warning(f"[CORE_MEMORY] NVIDIA context enhancement failed: {e}")
-                
-                return recent_context, semantic_context
-            else:
-                # Use legacy context with NVIDIA enhancement if available
-                from memo.context import get_legacy_context
-                return await get_legacy_context(user_id, question, self, self.embedder, 3)
+            from memo.conversation import get_conversation_manager
+            conversation_manager = get_conversation_manager(self, self.embedder)
+            
+            return await conversation_manager.consolidate_memories(user_id, nvidia_rotator)
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Memory consolidation failed: {e}")
+            return {"consolidated": 0, "pruned": 0, "error": str(e)}
+    
+    async def handle_context_switch(self, user_id: str, new_question: str, 
+                                  nvidia_rotator=None) -> Dict[str, Any]:
+        """Handle context switching when user changes topics"""
+        try:
+            from memo.conversation import get_conversation_manager
+            conversation_manager = get_conversation_manager(self, self.embedder)
+            
+            return await conversation_manager.handle_context_switch(user_id, new_question, nvidia_rotator)
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Context switch handling failed: {e}")
+            return {"is_context_switch": False, "confidence": 0.0, "error": str(e)}
+    
+    def get_conversation_insights(self, user_id: str) -> Dict[str, Any]:
+        """Get insights about the user's conversation patterns"""
+        try:
+            from memo.conversation import get_conversation_manager
+            conversation_manager = get_conversation_manager(self, self.embedder)
+            
+            return conversation_manager.get_conversation_insights(user_id)
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to get conversation insights: {e}")
+            return {"error": str(e)}
+    
+    async def get_smart_context(self, user_id: str, question: str, 
+                              nvidia_rotator=None, project_id: Optional[str] = None,
+                              conversation_mode: str = "chat") -> Tuple[str, str, Dict[str, Any]]:
+        """Get smart context using advanced conversation management"""
+        try:
+            from memo.conversation import get_conversation_manager
+            conversation_manager = get_conversation_manager(self, self.embedder)
+            
+            return await conversation_manager.get_smart_context(
+                user_id, question, nvidia_rotator, project_id, conversation_mode
+            )
         except Exception as e:
             logger.error(f"[CORE_MEMORY] Failed to get smart context: {e}")
-            return "", ""
+            return "", "", {"error": str(e)}
     
     # ────────────────────────────── Private Helper Methods ──────────────────────────────
     

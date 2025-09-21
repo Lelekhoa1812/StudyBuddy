@@ -28,7 +28,7 @@ class RetrievalManager:
                               nvidia_rotator=None, project_id: Optional[str] = None,
                               conversation_mode: str = "chat") -> Tuple[str, str, Dict[str, Any]]:
         """
-        Get intelligent context for conversation with enhanced edge case handling.
+        Get intelligent context for conversation with enhanced memory planning.
         
         Args:
             user_id: User identifier
@@ -40,6 +40,27 @@ class RetrievalManager:
         Returns:
             Tuple of (recent_context, semantic_context, metadata)
         """
+        try:
+            # Use the new memory planning system from core memory
+            return await self.memory_system.get_smart_context(
+                user_id, question, nvidia_rotator, project_id, conversation_mode
+            )
+            
+        except Exception as e:
+            logger.error(f"[RETRIEVAL_MANAGER] Smart context failed: {e}")
+            # Fallback to legacy approach
+            try:
+                return await self._get_legacy_smart_context(
+                    user_id, question, nvidia_rotator, project_id, conversation_mode
+                )
+            except Exception as fallback_error:
+                logger.error(f"[RETRIEVAL_MANAGER] Legacy fallback also failed: {fallback_error}")
+                return "", "", {"error": str(e)}
+    
+    async def _get_legacy_smart_context(self, user_id: str, question: str, 
+                                      nvidia_rotator=None, project_id: Optional[str] = None,
+                                      conversation_mode: str = "chat") -> Tuple[str, str, Dict[str, Any]]:
+        """Legacy smart context retrieval as fallback"""
         try:
             # Check for conversation session continuity
             from memo.sessions import get_session_manager
@@ -71,13 +92,14 @@ class RetrievalManager:
                 "context_enhanced": context_used,
                 "enhanced_input": enhanced_input,
                 "conversation_depth": session_info["depth"],
-                "last_activity": session_info["last_activity"]
+                "last_activity": session_info["last_activity"],
+                "legacy_mode": True
             }
             
             return recent_context, semantic_context, metadata
             
         except Exception as e:
-            logger.error(f"[RETRIEVAL_MANAGER] Smart context failed: {e}")
+            logger.error(f"[RETRIEVAL_MANAGER] Legacy smart context failed: {e}")
             return "", "", {"error": str(e)}
     
     async def _get_continuation_context(self, user_id: str, question: str, 
@@ -308,6 +330,19 @@ Create an enhanced version that incorporates this context naturally."""
         except Exception as e:
             logger.warning(f"[RETRIEVAL_MANAGER] Instructions enhancement failed: {e}")
             return instructions, False
+    
+    async def get_enhancement_context(self, user_id: str, question: str, 
+                                    nvidia_rotator=None, project_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+        """Get context specifically optimized for enhancement requests"""
+        try:
+            # Use the core memory system's enhancement context method
+            return await self.memory_system.get_enhancement_context(
+                user_id, question, nvidia_rotator, project_id
+            )
+            
+        except Exception as e:
+            logger.error(f"[RETRIEVAL_MANAGER] Enhancement context failed: {e}")
+            return "", "", {"error": str(e)}
 
 
 # ────────────────────────────── Global Instance ──────────────────────────────

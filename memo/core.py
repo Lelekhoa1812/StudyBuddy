@@ -142,6 +142,15 @@ class MemorySystem:
             logger.error(f"[CORE_MEMORY] Failed to get conversation context: {e}")
             return "", ""
     
+    async def get_enhanced_context(self, user_id: str, question: str,
+                                 project_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+        """Get enhanced context using the new memory planning system"""
+        try:
+            return await self.get_smart_context(user_id, question, None, project_id, "chat")
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to get enhanced context: {e}")
+            return "", "", {"error": str(e)}
+    
     async def search_memories(self, user_id: str, query: str,
                             project_id: Optional[str] = None,
                             limit: int = 10) -> List[Tuple[str, float]]:
@@ -211,16 +220,90 @@ class MemorySystem:
     async def get_smart_context(self, user_id: str, question: str, 
                               nvidia_rotator=None, project_id: Optional[str] = None,
                               conversation_mode: str = "chat") -> Tuple[str, str, Dict[str, Any]]:
-        """Get smart context using advanced conversation management"""
+        """Get smart context using advanced memory planning strategy"""
         try:
-            from memo.conversation import get_conversation_manager
-            conversation_manager = get_conversation_manager(self, self.embedder)
+            from memo.planning import get_memory_planner
+            memory_planner = get_memory_planner(self, self.embedder)
             
-            return await conversation_manager.get_smart_context(
-                user_id, question, nvidia_rotator, project_id, conversation_mode
+            # Plan memory strategy based on user intent
+            execution_plan = await memory_planner.plan_memory_strategy(
+                user_id, question, nvidia_rotator, project_id
             )
+            
+            # Execute the planned strategy
+            recent_context, semantic_context, metadata = await memory_planner.execute_memory_plan(
+                user_id, question, execution_plan, nvidia_rotator, project_id
+            )
+            
+            # Add planning metadata to response
+            metadata.update({
+                "memory_planning": True,
+                "intent": execution_plan["intent"].value,
+                "strategy": execution_plan["strategy"].value,
+                "enhancement_focus": execution_plan["enhancement_focus"],
+                "qa_focus": execution_plan["qa_focus"]
+            })
+            
+            return recent_context, semantic_context, metadata
+            
         except Exception as e:
             logger.error(f"[CORE_MEMORY] Failed to get smart context: {e}")
+            # Fallback to original conversation manager
+            try:
+                from memo.conversation import get_conversation_manager
+                conversation_manager = get_conversation_manager(self, self.embedder)
+                
+                return await conversation_manager.get_smart_context(
+                    user_id, question, nvidia_rotator, project_id, conversation_mode
+                )
+            except Exception as fallback_error:
+                logger.error(f"[CORE_MEMORY] Fallback also failed: {fallback_error}")
+                return "", "", {"error": str(e)}
+    
+    async def get_enhancement_context(self, user_id: str, question: str, 
+                                    nvidia_rotator=None, project_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+        """Get context specifically optimized for enhancement requests"""
+        try:
+            from memo.planning import get_memory_planner, QueryIntent, MemoryStrategy
+            memory_planner = get_memory_planner(self, self.embedder)
+            
+            # Force enhancement intent and focused Q&A strategy
+            execution_plan = {
+                "intent": QueryIntent.ENHANCEMENT,
+                "strategy": MemoryStrategy.FOCUSED_QA,
+                "retrieval_params": {
+                    "recent_limit": 5,
+                    "semantic_limit": 10,
+                    "qa_focus": True,
+                    "enhancement_mode": True,
+                    "priority_types": ["conversation", "qa"],
+                    "similarity_threshold": 0.05,  # Very low threshold for maximum recall
+                    "use_ai_selection": True
+                },
+                "conversation_context": {},
+                "enhancement_focus": True,
+                "qa_focus": True
+            }
+            
+            # Execute the enhancement-focused strategy
+            recent_context, semantic_context, metadata = await memory_planner.execute_memory_plan(
+                user_id, question, execution_plan, nvidia_rotator, project_id
+            )
+            
+            # Add enhancement-specific metadata
+            metadata.update({
+                "enhancement_mode": True,
+                "qa_focused": True,
+                "memory_planning": True,
+                "intent": "enhancement",
+                "strategy": "focused_qa"
+            })
+            
+            logger.info(f"[CORE_MEMORY] Enhancement context retrieved: {len(recent_context)} recent, {len(semantic_context)} semantic")
+            return recent_context, semantic_context, metadata
+            
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to get enhancement context: {e}")
             return "", "", {"error": str(e)}
     
     # ────────────────────────────── Private Helper Methods ──────────────────────────────

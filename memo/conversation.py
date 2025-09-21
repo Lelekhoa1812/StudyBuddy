@@ -35,7 +35,7 @@ class ConversationManager:
                               nvidia_rotator=None, project_id: Optional[str] = None,
                               conversation_mode: str = "chat") -> Tuple[str, str, Dict[str, Any]]:
         """
-        Get intelligent context for conversation with enhanced edge case handling.
+        Get intelligent context for conversation with enhanced memory planning.
         
         Args:
             user_id: User identifier
@@ -53,6 +53,17 @@ class ConversationManager:
             )
         except Exception as e:
             logger.error(f"[CONVERSATION_MANAGER] Smart context failed: {e}")
+            return "", "", {"error": str(e)}
+    
+    async def get_enhancement_context(self, user_id: str, question: str, 
+                                    nvidia_rotator=None, project_id: Optional[str] = None) -> Tuple[str, str, Dict[str, Any]]:
+        """Get context specifically optimized for enhancement requests"""
+        try:
+            return await self.retrieval_manager.get_enhancement_context(
+                user_id, question, nvidia_rotator, project_id
+            )
+        except Exception as e:
+            logger.error(f"[CONVERSATION_MANAGER] Enhancement context failed: {e}")
             return "", "", {"error": str(e)}
     
     async def consolidate_memories(self, user_id: str, nvidia_rotator=None) -> Dict[str, Any]:

@@ -52,4 +52,9 @@ class ReportResponse(BaseModel):
     report_markdown: str
     sources: List[Dict[str, Any]]
 
+class StatusUpdateResponse(BaseModel):
+    status: str
+    message: str
+    progress: Optional[int] = None
+
 

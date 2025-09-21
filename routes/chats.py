@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import Form, HTTPException
 
 from helpers.setup import app, rag, logger, embedder, captioner, gemini_rotator, nvidia_rotator
-from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse
+from helpers.models import ChatMessageResponse, ChatHistoryResponse, MessageResponse, ChatAnswerResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from .search import build_web_context
 from utils.api.router import select_model, generate_answer_with_model
@@ -89,6 +89,25 @@ async def delete_chat_history(user_id: str, project_id: str):
         return MessageResponse(message="Chat history cleared")
     except Exception as e:
         raise HTTPException(500, detail=f"Failed to clear chat history: {str(e)}")
+
+
+# In-memory status tracking for real-time updates
+chat_status_store = {}
+
+@app.get("/chat/status/{session_id}", response_model=StatusUpdateResponse)
+async def get_chat_status(session_id: str):
+    """Get current status of a chat processing session"""
+    status = chat_status_store.get(session_id, {"status": "idle", "message": "Ready", "progress": 0})
+    return StatusUpdateResponse(**status)
+
+
+def update_chat_status(session_id: str, status: str, message: str, progress: int = None):
+    """Update chat processing status"""
+    chat_status_store[session_id] = {
+        "status": status,
+        "message": message,
+        "progress": progress
+    }
 
 
 # ────────────────────────────── RAG Chat and Helpers ──────────────────────────────
@@ -176,13 +195,21 @@ async def chat(
     question: str = Form(...), 
     k: int = Form(6),
     use_web: int = Form(0),
-    max_web: int = Form(30)
+    max_web: int = Form(30),
+    session_id: str = Form(None)
 ):
     import asyncio
+    import uuid
+    
+    # Generate session ID if not provided
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    
     try:
-        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web), timeout=120.0)
+        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
     except asyncio.TimeoutError:
         logger.error("[CHAT] Chat request timed out after 120 seconds")
+        update_chat_status(session_id, "error", "Request timed out", 0)
         return ChatAnswerResponse(
             answer="Sorry, the request took too long to process. Please try again with a simpler question.",
             sources=[],
@@ -196,13 +223,18 @@ async def _chat_impl(
     question: str, 
     k: int,
     use_web: int = 0,
-    max_web: int = 30
+    max_web: int = 30,
+    session_id: str = None
 ):
     import sys
     from memo.core import get_memory_system
     from utils.api.router import NVIDIA_SMALL  # reuse default name
     memory = get_memory_system()
     logger.info("[CHAT] User Q/chat: %s", trim_text(question, 15).replace("\n", " "))
+    
+    # Update status: Receiving request
+    if session_id:
+        update_chat_status(session_id, "receiving", "Receiving request...", 5)
 
     mentioned = set([m.group(0).strip() for m in re.finditer(r"\b[^\s/\\]+?\.(?:pdf|docx|doc)\b", question, re.IGNORECASE)])
     if mentioned:
@@ -307,8 +339,17 @@ async def _chat_impl(
             semantic_related = "\n\n".join(top) if top else ""
 
     logger.info(f"[CHAT] Starting enhanced vector search with relevant_files={relevant_files}")
+    
+    # Update status: Processing data (LLM generating query variations)
+    if session_id:
+        update_chat_status(session_id, "processing", "Processing data...", 15)
+    
     enhanced_queries = await _generate_query_variations(question, nvidia_rotator)
     logger.info(f"[CHAT] Generated {len(enhanced_queries)} query variations")
+    
+    # Update status: Planning action (planning search strategy)
+    if session_id:
+        update_chat_status(session_id, "planning", "Planning action...", 25)
     all_hits = []
     search_strategies = ["flat", "hybrid", "local"]
     for strategy in search_strategies:
@@ -413,11 +454,16 @@ async def _chat_impl(
     web_context_block = ""
     web_sources_meta: List[Dict[str, Any]] = []
     if use_web:
+        # Update status: Searching information (web search)
+        if session_id:
+            update_chat_status(session_id, "searching", "Searching information...", 40)
         try:
-            # Use planner to avoid redundant fetching and improve coverage
-            web_context_block, web_sources_meta = await plan_and_build_web_context(
-                question, max_web=max_web, per_query=6, top_k=12, dedup_threshold=0.90
-            )
+            # Create status callback for web search
+            def web_status_callback(status, message, progress):
+                if session_id:
+                    update_chat_status(session_id, status, message, progress)
+            
+            web_context_block, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10, status_callback=web_status_callback)
         except Exception as e:
             logger.warning(f"[CHAT] Web augmentation failed: {e}")
 
@@ -447,10 +493,19 @@ async def _chat_impl(
     if web_context_block:
         composed_context += "\n\nWEB_CONTEXT:\n" + web_context_block
 
+    # Update status: Thinking solution
+    if session_id:
+        update_chat_status(session_id, "thinking", "Thinking solution...", 60)
+    
     user_prompt = f"QUESTION:\n{question}\n\nCONTEXT:\n{composed_context}"
     selection = select_model(question=question, context=composed_context)
     logger.info(f"Model selection: {selection}")
     logger.info(f"[CHAT] Generating answer with {selection['provider']} {selection['model']}")
+    
+    # Update status: Generating answer
+    if session_id:
+        update_chat_status(session_id, "generating", "Generating answer...", 80)
+    
     try:
         answer = await generate_answer_with_model(
             selection=selection,
@@ -491,6 +546,10 @@ async def _chat_impl(
                 "score": float(s.get("score", 0.0)),
                 "kind": "web"
             })
+    # Update status: Complete
+    if session_id:
+        update_chat_status(session_id, "complete", "Answer ready", 100)
+    
     logger.info("LLM answer (trimmed): %s", trim_text(answer, 200).replace("\n", " "))
     return ChatAnswerResponse(answer=answer, sources=sources_meta, relevant_files=relevant_files)
 
@@ -557,7 +616,8 @@ async def chat_with_search(
     project_id: str = Form(...),
     question: str = Form(...),
     k: int = Form(6),
-    max_web: int = Form(30)
+    max_web: int = Form(30),
+    session_id: str = Form(None)
 ):
     """Answer using local documents and up to 30 web sources, with URL citations."""
     from memo.core import get_memory_system
@@ -565,7 +625,7 @@ async def chat_with_search(
     logger.info("[CHAT] User Q/chat.search: %s", trim_text(question, 20).replace("\n", " "))
 
     # 1) Reuse local RAG retrieval
-    local_resp = await _chat_impl(user_id, project_id, question, k)
+    local_resp = await _chat_impl(user_id, project_id, question, k, use_web=1, max_web=max_web, session_id=session_id)
 
     # 2) Web search and fetching via shared utilities
     web_context, web_sources_meta = await build_web_context(question, max_web=max_web, top_k=10)

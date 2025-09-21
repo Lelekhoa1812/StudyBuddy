@@ -598,7 +598,7 @@ async def calculate_comprehensive_score(content: str, user_query: str, url: str,
     return max(0.0, min(1.0, comprehensive_score))
 
 
-async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
+async def build_web_context(question: str, max_web: int = 30, top_k: int = 10, status_callback=None) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Intelligent web search and content processing:
     1. Extract intelligent search keywords
@@ -609,6 +609,8 @@ async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -
     t0 = time.perf_counter()
     
     # Step 1: Extract intelligent search keywords
+    if status_callback:
+        status_callback("searching", "Searching information...", 45)
     keywords = await extract_search_keywords(question, nvidia_rotator)
     logger.info(f"[SEARCH] Extracted keywords: {keywords}")
     
@@ -623,6 +625,8 @@ async def build_web_context(question: str, max_web: int = 30, top_k: int = 10) -
         return "", []
     
     # Step 3: Process each source with NVIDIA agent
+    if status_callback:
+        status_callback("processing", "Processing data...", 50)
     processing_tasks = []
     for result in search_results:
         task = fetch_and_process_content(result["url"], result["title"], question, nvidia_rotator)

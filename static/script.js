@@ -499,13 +499,19 @@
     // Save user message to chat history
     await saveChatMessage(user.user_id, currentProject.project_id, 'user', question);
 
-    // Add thinking message
-    const thinkingMsg = appendMessage('thinking', 'Thinking...');
+    // Generate session ID for status tracking
+    const sessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // Add thinking message with dynamic status
+    const thinkingMsg = appendMessage('thinking', 'Receiving request...');
     
     // Disable input during processing
     questionInput.disabled = true;
     sendBtn.disabled = true;
     showButtonLoading(sendBtn, true);
+    
+    // Start status polling
+    const statusInterval = startStatusPolling(sessionId, thinkingMsg);
 
     try {
       // Branch: if report mode is active → call /report with textarea as instructions
@@ -519,6 +525,7 @@
         form.append('outline_words', '200');
         form.append('report_words', '1200');
         form.append('instructions', question);
+        form.append('session_id', sessionId);
         // If Search is toggled on, enable web augmentation for report
         const useWeb = searchLink && searchLink.classList.contains('active');
         if (useWeb) {
@@ -542,6 +549,7 @@
         formData.append('project_id', currentProject.project_id);
         formData.append('question', question);
         formData.append('k', '6');
+        formData.append('session_id', sessionId);
         // If Search is toggled on, enable web augmentation
         const useWeb = searchLink && searchLink.classList.contains('active');
         if (useWeb) {
@@ -573,6 +581,10 @@
       appendMessage('assistant', errorMsg);
       await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', errorMsg);
     } finally {
+      // Stop status polling
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
       // Re-enable input
       questionInput.disabled = false;
       sendBtn.disabled = false;
@@ -1072,4 +1084,90 @@
   }, { threshold: 0.1 });
 
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Status polling function for real-time updates
+  function startStatusPolling(sessionId, thinkingMsg) {
+    const isReportMode = isReportModeActive();
+    const statusEndpoint = isReportMode ? `/report/status/${sessionId}` : `/chat/status/${sessionId}`;
+    
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(statusEndpoint);
+        if (response.ok) {
+          const status = await response.json();
+          updateThinkingMessage(thinkingMsg, status.message, status.progress);
+          
+          // Stop polling when complete or error
+          if (status.status === 'complete' || status.status === 'error') {
+            clearInterval(interval);
+          }
+        }
+      } catch (error) {
+        console.warn('Status polling failed:', error);
+      }
+    }, 500); // Poll every 500ms
+    
+    return interval;
+  }
+
+  function updateThinkingMessage(thinkingMsg, message, progress) {
+    if (thinkingMsg && thinkingMsg.querySelector) {
+      const progressBar = thinkingMsg.querySelector('.progress-bar');
+      const statusText = thinkingMsg.querySelector('.status-text');
+      
+      if (statusText) {
+        statusText.textContent = message;
+      }
+      
+      if (progressBar && progress !== undefined) {
+        progressBar.style.width = `${progress}%`;
+      }
+    }
+  }
+
+  // Enhanced thinking message with progress bar
+  function appendMessage(role, text, isReport = false) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `msg ${role}`;
+    
+    if (role === 'thinking') {
+      messageDiv.innerHTML = `
+        <div class="thinking-container">
+          <div class="status-text">${text}</div>
+          <div class="progress-container">
+            <div class="progress-bar" style="width: 0%"></div>
+          </div>
+        </div>
+      `;
+    } else if (role === 'assistant') {
+      // Render Markdown for assistant messages
+      try {
+        // Use marked library to convert Markdown to HTML
+        const htmlContent = marked.parse(text);
+        messageDiv.innerHTML = htmlContent;
+        
+        // Add copy buttons to code blocks
+        addCopyButtonsToCodeBlocks(messageDiv);
+        
+        // Add download PDF button for reports
+        if (isReport) {
+          addDownloadPdfButton(messageDiv, text);
+        }
+      } catch (e) {
+        // Fallback to plain text if Markdown parsing fails
+        messageDiv.textContent = text;
+      }
+    } else {
+      messageDiv.textContent = text;
+    }
+    
+    messages.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    requestAnimationFrame(() => {
+      messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+    
+    return messageDiv;
+  }
 })();

@@ -122,12 +122,12 @@ async def generate_report(
     logger.info("[REPORT] Starting CoT planning phase")
     update_report_status(session_id, "planning", "Planning action...", 25)
     # Use enhanced instructions for better CoT planning
-    cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator)
+    cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator, gemini_rotator)
     
     # Step 2: Execute detailed subtasks based on CoT plan
     logger.info("[REPORT] Executing detailed subtasks")
     update_report_status(session_id, "processing", "Processing data...", 40)
-    detailed_analysis = await execute_detailed_subtasks(cot_plan, context_text, web_context_block, eff_name, nvidia_rotator)
+    detailed_analysis = await execute_detailed_subtasks(cot_plan, context_text, web_context_block, eff_name, nvidia_rotator, gemini_rotator)
     
     # Step 3: Synthesize comprehensive report from detailed analysis
     logger.info("[REPORT] Synthesizing comprehensive report")
@@ -184,7 +184,7 @@ async def generate_report_pdf(
 
 # ────────────────────────────── Chain of Thought Report Generation ──────────────────
 
-async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator) -> Dict[str, Any]:
+async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
     """Generate a detailed Chain of Thought plan for report generation using NVIDIA."""
     sys_prompt = """You are an expert research analyst and report planner. Given a user's request and available materials, create a comprehensive plan for generating a detailed, professional report.
 
@@ -262,15 +262,21 @@ Create a detailed plan for generating a comprehensive report that addresses the 
 
     try:
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         
         # Parse JSON response
         import json
         json_text = response.strip()
+        logger.info(f"[REPORT] Raw CoT response length: {len(json_text)}")
+        logger.info(f"[REPORT] Raw CoT response preview: {json_text[:200]}...")
+        
         if json_text.startswith('```json'):
             json_text = json_text[7:-3].strip()
         elif json_text.startswith('```'):
             json_text = json_text[3:-3].strip()
+        
+        if not json_text:
+            raise ValueError("Empty response from model")
         
         plan = json.loads(json_text)
         logger.info(f"[REPORT] CoT plan generated with {len(plan.get('report_structure', {}).get('sections', []))} sections")
@@ -278,7 +284,64 @@ Create a detailed plan for generating a comprehensive report that addresses the 
         
     except Exception as e:
         logger.warning(f"[REPORT] CoT planning failed: {e}")
-        # Fallback plan
+        # Try a simpler fallback approach
+        try:
+            logger.info("[REPORT] Attempting simplified CoT planning")
+            simple_sys_prompt = """You are a report planner. Create a simple plan for a report based on the user's request.
+
+Return a JSON object with this structure:
+{
+  "analysis": {
+    "user_intent": "What the user wants to know",
+    "key_requirements": ["requirement1", "requirement2"],
+    "complexity_level": "intermediate",
+    "focus_areas": ["area1", "area2"]
+  },
+  "report_structure": {
+    "sections": [
+      {
+        "title": "Introduction",
+        "purpose": "Provide overview",
+        "subtasks": [{"task": "Summarize key points", "reasoning": "Set foundation", "sources_needed": ["local"], "depth": "detailed"}]
+      },
+      {
+        "title": "Main Analysis", 
+        "purpose": "Address user's request",
+        "subtasks": [{"task": "Detailed analysis", "reasoning": "Core content", "sources_needed": ["local"], "depth": "comprehensive"}]
+      },
+      {
+        "title": "Conclusion",
+        "purpose": "Synthesize findings", 
+        "subtasks": [{"task": "Summarize insights", "reasoning": "Provide closure", "sources_needed": ["local"], "depth": "detailed"}]
+      }
+    ]
+  },
+  "reasoning_flow": ["Analyze materials", "Extract insights", "Synthesize findings"]
+}"""
+
+            simple_user_prompt = f"""USER REQUEST: {instructions}
+
+FILE SUMMARY: {file_summary[:500]}
+
+Create a simple plan for this report."""
+
+            simple_response = await generate_answer_with_model(selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator)
+            simple_json_text = simple_response.strip()
+            
+            if simple_json_text.startswith('```json'):
+                simple_json_text = simple_json_text[7:-3].strip()
+            elif simple_json_text.startswith('```'):
+                simple_json_text = simple_json_text[3:-3].strip()
+            
+            if simple_json_text:
+                simple_plan = json.loads(simple_json_text)
+                logger.info("[REPORT] Simplified CoT plan generated successfully")
+                return simple_plan
+        except Exception as simple_e:
+            logger.warning(f"[REPORT] Simplified CoT planning also failed: {simple_e}")
+        
+        # Final fallback plan
+        logger.info("[REPORT] Using hardcoded fallback plan")
         return {
             "analysis": {
                 "user_intent": instructions,
@@ -309,7 +372,7 @@ Create a detailed plan for generating a comprehensive report that addresses the 
         }
 
 
-async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator) -> Dict[str, Any]:
+async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
     """Execute detailed analysis for each subtask identified in the CoT plan."""
     detailed_analysis = {}
     synthesis_strategy = cot_plan.get("synthesis_strategy", {})
@@ -338,7 +401,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
             # Generate comprehensive analysis for this subtask
             subtask_result = await analyze_subtask_comprehensive(
                 task, reasoning, sources_needed, depth, sub_actions, expected_output, 
-                quality_checks, context_text, web_context, filename, nvidia_rotator
+                quality_checks, context_text, web_context, filename, nvidia_rotator, gemini_rotator
             )
             
             section_analysis["subtask_results"].append({
@@ -353,7 +416,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
         
         # Generate section-level synthesis
         section_synthesis = await synthesize_section_analysis(
-            section_analysis, synthesis_strategy, nvidia_rotator
+            section_analysis, synthesis_strategy, nvidia_rotator, gemini_rotator
         )
         section_analysis["section_synthesis"] = section_synthesis
         
@@ -365,7 +428,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
 
 async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_needed: List[str], depth: str,
                                       sub_actions: List[str], expected_output: str, quality_checks: List[str],
-                                      context_text: str, web_context: str, filename: str, nvidia_rotator) -> str:
+                                      context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> str:
     """Analyze a specific subtask with comprehensive detail and sub-actions."""
     
     # Select appropriate context based on sources_needed
@@ -423,7 +486,7 @@ Perform the comprehensive analysis as specified, following all sub-actions and m
 
     try:
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         return analysis.strip()
         
     except Exception as e:
@@ -431,7 +494,7 @@ Perform the comprehensive analysis as specified, following all sub-actions and m
         return f"Analysis for '{task}' could not be completed due to processing error."
 
 
-async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator) -> str:
+async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator, gemini_rotator) -> str:
     """Synthesize all subtask results within a section into a coherent analysis."""
     
     section_title = section_analysis.get("title", "Unknown Section")
@@ -474,7 +537,7 @@ Synthesize these analyses into a comprehensive, coherent section that fulfills t
 
     try:
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         return synthesis.strip()
         
     except Exception as e:

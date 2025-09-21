@@ -54,9 +54,13 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
         headers = {"Content-Type": "application/json"}
         data = await robust_post_json(url, headers, payload, gemini_rotator)
         try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception:
-            logger.warning(f"Unexpected Gemini response: {data}")
+            content = data["candidates"][0]["content"]["parts"][0]["text"]
+            if not content or content.strip() == "":
+                logger.warning(f"Empty content from Gemini model: {data}")
+                return "I received an empty response from the model."
+            return content
+        except Exception as e:
+            logger.warning(f"Unexpected Gemini response: {data}, error: {e}")
             return "I couldn't parse the model response."
 
     elif provider == "nvidia":
@@ -74,9 +78,13 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
         data = await robust_post_json(url, headers, payload, nvidia_rotator)
         try:
-            return data["choices"][0]["message"]["content"]
-        except Exception:
-            logger.warning(f"Unexpected NVIDIA response: {data}")
+            content = data["choices"][0]["message"]["content"]
+            if not content or content.strip() == "":
+                logger.warning(f"Empty content from NVIDIA model: {data}")
+                return "I received an empty response from the model."
+            return content
+        except Exception as e:
+            logger.warning(f"Unexpected NVIDIA response: {data}, error: {e}")
             return "I couldn't parse the model response."
 
     return "Unsupported provider."

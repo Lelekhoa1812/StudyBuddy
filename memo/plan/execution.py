@@ -349,14 +349,9 @@ Available Q&A Memories:
 
 Select the most relevant Q&A memories:"""
             
-            selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-            response = await generate_answer_with_model(
-                selection=selection,
-                system_prompt=sys_prompt,
-                user_prompt=user_prompt,
-                gemini_rotator=None,
-                nvidia_rotator=nvidia_rotator
-            )
+            # Use DeepSeek for better memory selection reasoning
+            from utils.api.router import deepseek_chat_completion
+            response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             return response.strip()
             

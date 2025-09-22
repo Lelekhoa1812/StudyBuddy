@@ -17,27 +17,54 @@ NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "deepseek-ai/deepseek-v3.1")  # DeepS
 
 def select_model(question: str, context: str) -> Dict[str, Any]:
     """
-    Enhanced complexity heuristic with DeepSeek integration:
-    - If very complex (hard keywords, long context) -> Gemini Pro
-    - If medium complexity (moderate length, some reasoning) -> DeepSeek
-    - If simple (short, basic) -> NVIDIA small
+    Enhanced complexity heuristic with proper model hierarchy:
+    - Easy tasks (immediate execution, simple) -> Llama (NVIDIA small)
+    - Medium tasks (accurate, reasoning, not too time-consuming) -> DeepSeek
+    - Hard tasks (complex analysis, synthesis, long-form) -> Gemini Pro
     """
     qlen = len(question.split())
     clen = len(context.split())
-    hard_keywords = ("prove", "derivation", "complexity", "algorithm", "optimize", "theorem", "rigorous", "step-by-step", "policy critique", "ambiguity", "counterfactual")
-    medium_keywords = ("analyze", "explain", "compare", "evaluate", "summarize", "extract", "classify", "identify", "describe", "discuss")
     
-    is_very_hard = any(k in question.lower() for k in hard_keywords) or qlen > 80 or clen > 2000
-    is_medium = any(k in question.lower() for k in medium_keywords) or qlen > 15 or clen > 500
+    # Hard task keywords - require complex reasoning and analysis
+    hard_keywords = ("prove", "derivation", "complexity", "algorithm", "optimize", "theorem", "rigorous", "step-by-step", "policy critique", "ambiguity", "counterfactual", "comprehensive", "detailed analysis", "synthesis", "evaluation")
+    
+    # Medium task keywords - require reasoning but not too complex
+    medium_keywords = ("analyze", "explain", "compare", "evaluate", "summarize", "extract", "classify", "identify", "describe", "discuss", "reasoning", "context", "enhance", "select", "consolidate")
+    
+    # Simple task keywords - immediate execution
+    simple_keywords = ("what", "how", "when", "where", "who", "yes", "no", "count", "list", "find")
+    
+    # Determine complexity level
+    is_very_hard = (
+        any(k in question.lower() for k in hard_keywords) or 
+        qlen > 100 or 
+        clen > 3000 or
+        "comprehensive" in question.lower() or
+        "detailed" in question.lower()
+    )
+    
+    is_medium = (
+        any(k in question.lower() for k in medium_keywords) or 
+        (qlen > 10 and qlen <= 100) or 
+        (clen > 200 and clen <= 3000) or
+        "reasoning" in question.lower() or
+        "context" in question.lower()
+    )
+    
+    is_simple = (
+        any(k in question.lower() for k in simple_keywords) or
+        qlen <= 10 or
+        clen <= 200
+    )
 
     if is_very_hard:
-        # Use Gemini Pro for very complex tasks
+        # Use Gemini Pro for very complex tasks requiring advanced reasoning
         return {"provider": "gemini", "model": GEMINI_PRO}
     elif is_medium:
-        # Use DeepSeek for medium complexity tasks
+        # Use DeepSeek for medium complexity tasks requiring reasoning but not too time-consuming
         return {"provider": "deepseek", "model": NVIDIA_MEDIUM}
     else:
-        # Use NVIDIA small for simple tasks
+        # Use NVIDIA small (Llama) for simple tasks requiring immediate execution
         return {"provider": "nvidia", "model": NVIDIA_SMALL}
 
 

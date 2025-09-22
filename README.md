@@ -82,7 +82,7 @@ Open: `http://localhost:8000/static/`  •  Health: `GET /healthz`
 - PDF export renders code blocks with a dark IDE-like theme and lightweight syntax highlighting; control characters are stripped to avoid square artifacts.
 - CORS is open for the demo UI; restrict for production.
 
-### Samples
+### Docs
 
 [Report Generation](https://huggingface.co/spaces/BinKhoaLe1812/EdSummariser/blob/main/report.pdf)
 
@@ -90,6 +90,9 @@ Open: `http://localhost:8000/static/`  •  Health: `GET /healthz`
 
 [Utils Dir](https://huggingface.co/spaces/BinKhoaLe1812/EdSummariser/blob/main/utils/README.md)
 
+[Routes Dir](https://huggingface.co/spaces/BinKhoaLe1812/EdSummariser/blob/main/routes/README.md)
+
+[Agent Assignment](https://huggingface.co/spaces/BinKhoaLe1812/EdSummariser/blob/main/AGENT_ASNM.md)
 
 ### License
 

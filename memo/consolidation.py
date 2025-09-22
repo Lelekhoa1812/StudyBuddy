@@ -179,14 +179,9 @@ Return the consolidated content in the same format as the original memories."""
 
 Create a single consolidated memory:"""
                     
-                    selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-                    consolidated_content = await generate_answer_with_model(
-                        selection=selection,
-                        system_prompt=sys_prompt,
-                        user_prompt=user_prompt,
-                        gemini_rotator=None,
-                        nvidia_rotator=nvidia_rotator
-                    )
+                    # Use DeepSeek for better memory consolidation reasoning
+                    from utils.api.router import deepseek_chat_completion
+                    consolidated_content = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
                     
                     return {
                         "content": consolidated_content.strip(),

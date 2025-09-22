@@ -110,14 +110,9 @@ Respond with only the intent name (e.g., "ENHANCEMENT")."""
             
             user_prompt = f"Question: {question}\n\nWhat is the user's intent?"
             
-            selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-            response = await generate_answer_with_model(
-                selection=selection,
-                system_prompt=sys_prompt,
-                user_prompt=user_prompt,
-                gemini_rotator=None,
-                nvidia_rotator=nvidia_rotator
-            )
+            # Use DeepSeek for better intent detection reasoning
+            from utils.api.router import deepseek_chat_completion
+            response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             # Parse response
             response_upper = response.strip().upper()

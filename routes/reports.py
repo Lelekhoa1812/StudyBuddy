@@ -183,51 +183,40 @@ async def generate_report_pdf(
 
 
 # ────────────────────────────── Chain of Thought Report Generation ──────────────────
-
 async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
     """Generate a detailed Chain of Thought plan for report generation using NVIDIA."""
-    sys_prompt = """You are an expert research analyst and report planner. Given a user's request and available materials, create a comprehensive plan for generating a detailed, professional report.
+    sys_prompt = """You are an expert report planner. Create a comprehensive plan for generating a detailed, professional report.
 
-Your task is to:
-1. Deeply analyze the user's request and identify ALL key requirements and sub-requirements
-2. Break down the report into logical sections with detailed subtasks
-3. Identify specific information extraction needs from each source type
-4. Plan comprehensive reasoning flow and argument structure
-5. Determine appropriate depth and rigor for each section
-6. Create detailed sub-action plans for each major section
-7. Plan cross-referencing and synthesis strategies
-8. Identify potential gaps and additional research needs
+Analyze the user's request and create a structured plan with:
+1. Key requirements and focus areas
+2. Logical report sections with specific subtasks
+3. Information extraction needs and reasoning flow
+4. Cross-referencing and synthesis strategies
 
 Return a JSON object with this structure:
 {
   "analysis": {
-    "user_intent": "Detailed analysis of what the user really wants to know",
-    "key_requirements": ["primary_requirement1", "secondary_requirement2", "implicit_requirement3"],
+    "user_intent": "What the user wants to know",
+    "key_requirements": ["requirement1", "requirement2", "requirement3"],
     "complexity_level": "basic|intermediate|advanced|expert",
-    "focus_areas": ["primary_area1", "secondary_area2", "supporting_area3"],
+    "focus_areas": ["area1", "area2", "area3"],
     "target_audience": "academic|business|technical|general",
-    "report_scope": "comprehensive|focused|executive_summary",
-    "quality_standards": ["academic_rigor", "practical_applicability", "completeness"]
+    "report_scope": "comprehensive|focused|executive_summary"
   },
   "report_structure": {
     "sections": [
       {
         "title": "Section Title",
-        "purpose": "Detailed explanation of why this section is needed",
+        "purpose": "Why this section is needed",
         "priority": "critical|important|supporting",
-        "estimated_length": "short|medium|long",
         "subtasks": [
           {
-            "task": "Specific, detailed task description",
-            "reasoning": "Detailed explanation of why this task is important",
+            "task": "Specific task description",
+            "reasoning": "Why this task is important",
             "sources_needed": ["local", "web", "both"],
-            "depth": "surface|detailed|comprehensive|exhaustive",
-            "sub_actions": [
-              "Specific action 1",
-              "Specific action 2",
-              "Specific action 3"
-            ],
-            "expected_output": "What this subtask should produce",
+            "depth": "surface|detailed|comprehensive",
+            "sub_actions": ["action1", "action2"],
+            "expected_output": "What this produces",
             "quality_checks": ["check1", "check2"]
           }
         ]
@@ -235,33 +224,37 @@ Return a JSON object with this structure:
     ]
   },
   "reasoning_flow": [
-    "Step 1: Comprehensive analysis of...",
-    "Step 2: Deep examination of...",
-    "Step 3: Critical evaluation of...",
-    "Step 4: Synthesis and integration of...",
-    "Step 5: Final comprehensive conclusion..."
+    "Step 1: Analyze materials and extract key insights",
+    "Step 2: Evaluate evidence and identify patterns",
+    "Step 3: Synthesize findings and develop arguments",
+    "Step 4: Create comprehensive conclusions"
   ],
   "synthesis_strategy": {
-    "cross_referencing": "How to connect information across sections",
-    "evidence_integration": "How to weave together different source types",
-    "argument_development": "How to build a compelling narrative",
-    "conclusion_synthesis": "How to create a powerful conclusion"
+    "cross_referencing": "Connect information across sections",
+    "evidence_integration": "Weave together different source types",
+    "argument_development": "Build compelling narrative",
+    "conclusion_synthesis": "Create powerful conclusion"
   }
 }"""
 
     user_prompt = f"""USER REQUEST: {instructions}
 
-AVAILABLE MATERIALS:
-FILE SUMMARY: {file_summary}
+MATERIALS:
+FILE SUMMARY: {file_summary[:800]}
 
-DOCUMENT CONTEXT: {context_text[:2000]}...
+DOCUMENT CONTEXT: {context_text[:1500]}
 
-WEB CONTEXT: {web_context[:2000]}...
+WEB CONTEXT: {web_context[:1000] if web_context else "No web context available"}
 
-Create a detailed plan for generating a comprehensive report that addresses the user's request."""
+Create a detailed plan for this report."""
 
     try:
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        # Use Gemini for CoT planning since it's more reliable for complex JSON generation
+        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+        logger.info(f"[REPORT] Starting CoT API call with model: {selection['model']}")
+        logger.info(f"[REPORT] System prompt length: {len(sys_prompt)}")
+        logger.info(f"[REPORT] User prompt length: {len(user_prompt)}")
+        
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         
         # Parse JSON response
@@ -269,6 +262,7 @@ Create a detailed plan for generating a comprehensive report that addresses the 
         json_text = response.strip()
         logger.info(f"[REPORT] Raw CoT response length: {len(json_text)}")
         logger.info(f"[REPORT] Raw CoT response preview: {json_text[:200]}...")
+        logger.info(f"[REPORT] Raw CoT response full: {json_text}")
         
         if json_text.startswith('```json'):
             json_text = json_text[7:-3].strip()
@@ -287,7 +281,7 @@ Create a detailed plan for generating a comprehensive report that addresses the 
         # Try a simpler fallback approach
         try:
             logger.info("[REPORT] Attempting simplified CoT planning")
-            simple_sys_prompt = """You are a report planner. Create a simple plan for a report based on the user's request.
+            simple_sys_prompt = """You are a report planner. Create a structured plan for a report.
 
 Return a JSON object with this structure:
 {
@@ -295,28 +289,73 @@ Return a JSON object with this structure:
     "user_intent": "What the user wants to know",
     "key_requirements": ["requirement1", "requirement2"],
     "complexity_level": "intermediate",
-    "focus_areas": ["area1", "area2"]
+    "focus_areas": ["area1", "area2"],
+    "target_audience": "general",
+    "report_scope": "focused"
   },
   "report_structure": {
     "sections": [
       {
         "title": "Introduction",
-        "purpose": "Provide overview",
-        "subtasks": [{"task": "Summarize key points", "reasoning": "Set foundation", "sources_needed": ["local"], "depth": "detailed"}]
+        "purpose": "Provide overview and context",
+        "priority": "important",
+        "subtasks": [
+          {
+            "task": "Summarize key points and background",
+            "reasoning": "Set foundation for analysis",
+            "sources_needed": ["local"],
+            "depth": "detailed",
+            "sub_actions": ["Extract main themes", "Identify key concepts"],
+            "expected_output": "Clear introduction with context",
+            "quality_checks": ["completeness", "clarity"]
+          }
+        ]
       },
       {
         "title": "Main Analysis", 
-        "purpose": "Address user's request",
-        "subtasks": [{"task": "Detailed analysis", "reasoning": "Core content", "sources_needed": ["local"], "depth": "comprehensive"}]
+        "purpose": "Address user's specific request",
+        "priority": "critical",
+        "subtasks": [
+          {
+            "task": "Detailed analysis of requested topics",
+            "reasoning": "Core content addressing user needs",
+            "sources_needed": ["local"],
+            "depth": "comprehensive",
+            "sub_actions": ["Analyze evidence", "Develop arguments", "Draw conclusions"],
+            "expected_output": "Thorough analysis with insights",
+            "quality_checks": ["accuracy", "depth", "relevance"]
+          }
+        ]
       },
       {
         "title": "Conclusion",
-        "purpose": "Synthesize findings", 
-        "subtasks": [{"task": "Summarize insights", "reasoning": "Provide closure", "sources_needed": ["local"], "depth": "detailed"}]
+        "purpose": "Synthesize findings and provide closure", 
+        "priority": "important",
+        "subtasks": [
+          {
+            "task": "Summarize key insights and recommendations",
+            "reasoning": "Provide clear closure and next steps",
+            "sources_needed": ["local"],
+            "depth": "detailed",
+            "sub_actions": ["Synthesize findings", "Highlight key takeaways"],
+            "expected_output": "Clear conclusion with actionable insights",
+            "quality_checks": ["completeness", "actionability"]
+          }
+        ]
       }
     ]
   },
-  "reasoning_flow": ["Analyze materials", "Extract insights", "Synthesize findings"]
+  "reasoning_flow": [
+    "Step 1: Analyze materials and extract key insights",
+    "Step 2: Evaluate evidence and develop arguments", 
+    "Step 3: Synthesize findings and create conclusions"
+  ],
+  "synthesis_strategy": {
+    "cross_referencing": "Connect related information across sections",
+    "evidence_integration": "Weave together different types of evidence",
+    "argument_development": "Build logical narrative flow",
+    "conclusion_synthesis": "Create compelling final synthesis"
+  }
 }"""
 
             simple_user_prompt = f"""USER REQUEST: {instructions}
@@ -325,7 +364,8 @@ FILE SUMMARY: {file_summary[:500]}
 
 Create a simple plan for this report."""
 
-            simple_response = await generate_answer_with_model(selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator)
+            simple_selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+            simple_response = await generate_answer_with_model(simple_selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator)
             simple_json_text = simple_response.strip()
             
             if simple_json_text.startswith('```json'):
@@ -485,7 +525,7 @@ MATERIALS:
 Perform the comprehensive analysis as specified, following all sub-actions and meeting quality standards."""
 
     try:
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
         analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         return analysis.strip()
         
@@ -536,7 +576,7 @@ DETAILED SUBTASK ANALYSES:
 Synthesize these analyses into a comprehensive, coherent section that fulfills the section purpose."""
 
     try:
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
         synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         return synthesis.strip()
         

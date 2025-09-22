@@ -76,7 +76,13 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             ]
         }
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
+        
+        logger.info(f"[ROUTER] NVIDIA API call - Model: {model}, Key present: {bool(key)}")
+        logger.info(f"[ROUTER] System prompt length: {len(system_prompt)}, User prompt length: {len(user_prompt)}")
+        
         data = await robust_post_json(url, headers, payload, nvidia_rotator)
+        
+        logger.info(f"[ROUTER] NVIDIA API response type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
         try:
             content = data["choices"][0]["message"]["content"]
             if not content or content.strip() == "":

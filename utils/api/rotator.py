@@ -12,12 +12,12 @@ logger = get_logger("ROTATOR", __name__)
 class APIKeyRotator:
     """
     Round-robin API key rotator.
-    - Loads keys from env vars with given prefix (e.g., GEMINI_API_1..8)
+    - Loads keys from env vars with given prefix (e.g., GEMINI_API_1..6)
     - get_key() returns current key
     - rotate() moves to next key
     - on HTTP 401/429/5xx you should call rotate() and retry (bounded)
     """
-    def __init__(self, prefix: str, max_slots: int = 8):
+    def __init__(self, prefix: str, max_slots: int = 6):
         self.keys = []
         for i in range(1, max_slots + 1):
             v = os.getenv(f"{prefix}{i}")
@@ -39,7 +39,7 @@ class APIKeyRotator:
         return self.current
 
 
-async def robust_post_json(url: str, headers: dict, payload: dict, rotator: APIKeyRotator, max_retries: int = 8):
+async def robust_post_json(url: str, headers: dict, payload: dict, rotator: APIKeyRotator, max_retries: int = 6):
     """
     POST JSON with simple retry+rotate on 401/403/429/5xx.
     Returns json response.

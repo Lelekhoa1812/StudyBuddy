@@ -3,6 +3,7 @@ import asyncio
 from typing import List
 from utils.logger import get_logger
 from utils.api.rotator import robust_post_json, APIKeyRotator
+from utils.api.router import deepseek_chat_completion
 
 logger = get_logger("SUM", __name__)
 
@@ -76,7 +77,7 @@ async def summarize_text(text: str, max_sentences: int = 6, chunk_size: int = 25
 
 
 async def clean_chunk_text(text: str) -> str:
-  """Use NVIDIA LLM to remove headers/footers and personally identifying/institution boilerplate.
+  """Use DeepSeek LLM to remove headers/footers and personally identifying/institution boilerplate.
   Keep the core academic content intact. Do not remove page numbers or section titles.
   """
   content = (text or "").strip()
@@ -89,13 +90,27 @@ async def clean_chunk_text(text: str) -> str:
   )
   user = f"Clean this content by removing headers/footers and IDs, keep core content:\n\n{content}"
   try:
-    return await llama_chat([
-      {"role": "system", "content": system},
-      {"role": "user", "content": user},
-    ], temperature=0.0)
+    # Use DeepSeek for better content cleaning
+    return await deepseek_chat_completion(system, user, ROTATOR)
   except Exception as e:
-    logger.warning(f"LLAMA cleaning failed: {e}; returning original text")
+    logger.warning(f"DeepSeek cleaning failed: {e}; returning original text")
     return content
+
+async def deepseek_summarize(text: str, max_sentences: int = 3) -> str:
+  """Use DeepSeek for better summarization with thinking mode."""
+  text = (text or "").strip()
+  if not text:
+    return ""
+  system = (
+    "You are a precise summarizer. Produce a clear, faithful summary of the user's text. "
+    f"Return ~{max_sentences} sentences, no comments, no preface, no markdown."
+  )
+  user = f"Summarize this text:\n\n{text}"
+  try:
+    return await deepseek_chat_completion(system, user, ROTATOR)
+  except Exception as e:
+    logger.warning(f"DeepSeek summarization failed: {e}; using fallback")
+    return naive_fallback(text, max_sentences)
 
 
 # Backward-compatible name used by app.py

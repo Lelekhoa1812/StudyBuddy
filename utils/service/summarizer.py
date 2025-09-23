@@ -3,7 +3,7 @@ import asyncio
 from typing import List
 from utils.logger import get_logger
 from utils.api.rotator import robust_post_json, APIKeyRotator
-from utils.api.router import qwen_chat_completion
+from utils.api.router import qwen_chat_completion, nvidia_large_chat_completion
 
 logger = get_logger("SUM", __name__)
 
@@ -25,9 +25,21 @@ async def llama_chat(messages, temperature: float = 0.2) -> str:
 
 
 async def llama_summarize(text: str, max_sentences: int = 3) -> str:
+  """Flexible summarization using NVIDIA Small (Llama) for short text, NVIDIA Large for long context."""
   text = (text or "").strip()
   if not text:
     return ""
+  
+  # Use NVIDIA Large for long context (>1500 chars), NVIDIA Small for short context
+  if len(text) > 1500:
+    logger.info(f"[SUMMARIZER] Using NVIDIA Large for long context ({len(text)} chars)")
+    return await nvidia_large_summarize(text, max_sentences)
+  else:
+    logger.info(f"[SUMMARIZER] Using NVIDIA Small for short context ({len(text)} chars)")
+    return await nvidia_small_summarize(text, max_sentences)
+
+async def nvidia_small_summarize(text: str, max_sentences: int = 3) -> str:
+  """Summarization using NVIDIA Small (Llama) for short text."""
   system = (
     "You are a precise summarizer. Produce a clear, faithful summary of the user's text. "
     f"Return ~{max_sentences} sentences, no comments, no preface, no markdown."
@@ -39,7 +51,20 @@ async def llama_summarize(text: str, max_sentences: int = 3) -> str:
       {"role": "user", "content": user},
     ])
   except Exception as e:
-    logger.warning(f"LLAMA summarization failed: {e}; using fallback")
+    logger.warning(f"NVIDIA Small summarization failed: {e}; using fallback")
+    return naive_fallback(text, max_sentences)
+
+async def nvidia_large_summarize(text: str, max_sentences: int = 3) -> str:
+  """Summarization using NVIDIA Large (GPT-OSS) for long context."""
+  system = (
+    "You are a precise summarizer. Produce a clear, faithful summary of the user's text. "
+    f"Return ~{max_sentences} sentences, no comments, no preface, no markdown."
+  )
+  user = f"Summarize this text:\n\n{text}"
+  try:
+    return await nvidia_large_chat_completion(system, user, ROTATOR)
+  except Exception as e:
+    logger.warning(f"NVIDIA Large summarization failed: {e}; using fallback")
     return naive_fallback(text, max_sentences)
 
 
@@ -49,11 +74,12 @@ def naive_fallback(text: str, max_sentences: int = 3) -> str:
 
 
 async def summarize_text(text: str, max_sentences: int = 6, chunk_size: int = 2500) -> str:
-  """Hierarchical summarization for long texts using NVIDIA Llama."""
+  """Hierarchical summarization for long texts using flexible model selection."""
   if not text:
     return ""
   if len(text) <= chunk_size:
     return await llama_summarize(text, max_sentences=max_sentences)
+  
   # Split into chunks on paragraph boundaries if possible
   paragraphs = text.split('\n\n')
   chunks: List[str] = []
@@ -68,10 +94,13 @@ async def summarize_text(text: str, max_sentences: int = 6, chunk_size: int = 25
   if buf:
     chunks.append('\n\n'.join(buf))
 
+  # Process chunks with flexible model selection
   partials = []
   for ch in chunks:
     partials.append(await llama_summarize(ch, max_sentences=3))
     await asyncio.sleep(0)
+  
+  # Combine and summarize with flexible model selection
   combined = '\n'.join(partials)
   return await llama_summarize(combined, max_sentences=max_sentences)
 
@@ -115,4 +144,5 @@ async def qwen_summarize(text: str, max_sentences: int = 3) -> str:
 
 # Backward-compatible name used by app.py
 async def cheap_summarize(text: str, max_sentences: int = 3) -> str:
+  """Backward-compatible summarization with flexible model selection."""
   return await llama_summarize(text, max_sentences)

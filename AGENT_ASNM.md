@@ -1,143 +1,168 @@
-# Task Assignment Review - Corrected Model Hierarchy
+# Task Assignment Review - Three-Tier Model System
 
 ## Overview
-This document summarizes the corrected task assignments to ensure proper model hierarchy:
-- **Easy tasks** (immediate execution, simple) → **Llama** (NVIDIA small)
-- **Medium tasks** (accurate, reasoning, not too time-consuming) → **Qwen**
-- **Hard tasks** (complex analysis, synthesis, long-form) → **Gemini Pro**
+This document summarizes the three-tier model selection system that optimizes API usage based on task complexity and reasoning requirements:
+- **Easy tasks** (immediate execution, simple) → **NVIDIA Small** (Llama-8b-instruct)
+- **Reasoning tasks** (thinking, decision-making, context selection) → **NVIDIA Medium** (Qwen-3-next-80b-a3b-thinking)
+- **Hard/long context tasks** (content processing, analysis, generation) → **NVIDIA Large** (GPT-OSS-120b)
+- **Very complex tasks** (research, comprehensive analysis) → **Gemini Pro**
 
-## Corrected Task Assignments
+## Three-Tier Task Assignments
 
-### ✅ **Easy Tasks - Llama (NVIDIA Small)**
+### ✅ **Easy Tasks - NVIDIA Small (Llama-8b-instruct)**
 **Purpose**: Immediate execution, simple operations
 **Current Assignments**:
 - `llama_chat()` - Basic chat completion
-- `llama_summarize()` - Simple text summarization
+- `nvidia_small_summarize()` - Simple text summarization (≤1500 chars)
 - `summarize_qa()` - Basic Q&A summarization
 - `naive_fallback()` - Simple text processing fallback
 
-### ✅ **Medium Tasks - Qwen**
-**Purpose**: Accurate reasoning, not too time-consuming
-**Corrected Assignments**:
-
-#### **Search Operations** (`routes/search.py`)
-- `extract_search_keywords()` - Keyword extraction with reasoning
-- `generate_search_strategies()` - Search strategy generation
-- `extract_relevant_content()` - Content relevance filtering
-- `assess_content_quality()` - Quality assessment with reasoning
-- `cross_validate_information()` - Fact-checking and validation
-- `generate_content_summary()` - Content summarization
+### ✅ **Reasoning Tasks - NVIDIA Medium (Qwen-3-next-80b-a3b-thinking)**
+**Purpose**: Thinking, decision-making, context selection
+**Current Assignments**:
 
 #### **Memory Operations** (`memo/`)
-- `files_relevance()` - File relevance classification
+- `files_relevance()` - File relevance classification with reasoning
 - `related_recent_context()` - Context selection with reasoning
-- `_ai_intent_detection()` - User intent detection (CORRECTED)
-- `_ai_select_qa_memories()` - Memory selection with reasoning (CORRECTED)
-- `_should_enhance_with_context()` - Context enhancement decision (CORRECTED)
-- `_enhance_question_with_context()` - Question enhancement (CORRECTED)
-- `_enhance_instructions_with_context()` - Instruction enhancement (CORRECTED)
-- `consolidate_similar_memories()` - Memory consolidation (CORRECTED)
+- `_ai_intent_detection()` - User intent detection with reasoning
+- `_ai_select_qa_memories()` - Memory selection with reasoning
+- `_should_enhance_with_context()` - Context enhancement decision
+- `_enhance_question_with_context()` - Question enhancement with reasoning
+- `_enhance_instructions_with_context()` - Instruction enhancement with reasoning
+- `consolidate_similar_memories()` - Memory consolidation with reasoning
 
 #### **Content Processing** (`utils/service/summarizer.py`)
 - `clean_chunk_text()` - Content cleaning with reasoning
-- `qwen_summarize()` - Medium complexity summarization
+- `qwen_summarize()` - Reasoning-based summarization
 
 #### **Chat Operations** (`routes/chats.py`)
-- `generate_query_variations()` - Query variation generation (CORRECTED)
+- `generate_query_variations()` - Query variation generation with reasoning
 
-### ✅ **Hard Tasks - Gemini Pro**
-**Purpose**: Complex analysis, synthesis, long-form content
+### ✅ **Hard/Long Context Tasks - NVIDIA Large (GPT-OSS-120b)**
+**Purpose**: Content processing, analysis, generation, long context
+**Current Assignments**:
+
+#### **Search Operations** (`routes/search.py`)
+- `extract_search_keywords()` - Keyword extraction for long queries
+- `generate_search_strategies()` - Search strategy generation
+- `extract_relevant_content()` - Content relevance filtering for long content
+- `assess_content_quality()` - Quality assessment for complex content
+- `cross_validate_information()` - Fact-checking and validation
+- `generate_content_summary()` - Content summarization for long content
+
+#### **Content Processing** (`utils/service/summarizer.py`)
+- `nvidia_large_summarize()` - Long context summarization (>1500 chars)
+- `llama_summarize()` - Flexible summarization (auto-selects model based on length)
+
+### ✅ **Very Complex Tasks - Gemini Pro**
+**Purpose**: Research, comprehensive analysis, advanced reasoning
 **Current Assignments**:
 - `generate_cot_plan()` - Chain of Thought report planning
 - `analyze_subtask_comprehensive()` - Comprehensive analysis
 - `synthesize_section_analysis()` - Complex synthesis
 - `generate_final_report()` - Long-form report generation
-- All complex report generation tasks
+- All complex report generation tasks requiring advanced reasoning
 
-## Key Corrections Made
+## Key Improvements Made
 
-### 1. **Intent Detection** (`memo/plan/intent.py`)
-- **Before**: Used Llama for simple classification
-- **After**: Uses Qwen for better reasoning about user intent
-- **Reason**: Requires understanding context and nuance
+### 1. **Three-Tier Model Selection**
+- **Before**: Two-tier system (Llama + Gemini)
+- **After**: Four-tier system (NVIDIA Small + NVIDIA Medium + NVIDIA Large + Gemini Pro)
+- **Reason**: Better optimization of model capabilities for different task types
 
-### 2. **Memory Selection** (`memo/plan/execution.py`)
-- **Before**: Used Llama for memory selection
-- **After**: Uses Qwen for better reasoning about relevance
-- **Reason**: Requires understanding context relationships
+### 2. **Reasoning vs. Processing Separation**
+- **Before**: Mixed reasoning and processing tasks
+- **After**: Clear separation - Qwen for reasoning, NVIDIA Large for processing
+- **Reason**: Qwen excels at thinking, NVIDIA Large excels at content processing
 
-### 3. **Context Enhancement** (`memo/retrieval.py`)
-- **Before**: Used Llama for enhancement decisions
-- **After**: Uses Qwen for better reasoning about context value
-- **Reason**: Requires understanding question-context relationships
+### 3. **Flexible Summarization** (`utils/service/summarizer.py`)
+- **Before**: Fixed model selection for summarization
+- **After**: Dynamic model selection based on context length (>1500 chars → NVIDIA Large)
+- **Reason**: Better handling of long context with appropriate model
 
-### 4. **Question Enhancement** (`memo/retrieval.py`)
-- **Before**: Used Llama for question enhancement
-- **After**: Uses Qwen for better reasoning about enhancement
-- **Reason**: Requires understanding conversation flow and context
+### 4. **Search Operations Optimization** (`routes/search.py`)
+- **Before**: Used Qwen for all search operations
+- **After**: Uses NVIDIA Large for content processing tasks
+- **Reason**: Better handling of long content and complex analysis
 
-### 5. **Memory Consolidation** (`memo/consolidation.py`)
-- **Before**: Used Llama for memory consolidation
-- **After**: Uses Qwen for better reasoning about similarity
-- **Reason**: Requires understanding content relationships
-
-### 6. **Query Variation Generation** (`routes/chats.py`)
-- **Before**: Used Llama for query variations
-- **After**: Uses Qwen for better reasoning about variations
-- **Reason**: Requires understanding question intent and context
+### 5. **Memory Operations Enhancement** (`memo/`)
+- **Before**: Mixed model usage for memory operations
+- **After**: Consistent use of Qwen for reasoning-based memory tasks
+- **Reason**: Better reasoning capabilities for context selection and enhancement
 
 ## Enhanced Model Selection Logic
 
-### **Complexity Heuristics**
+### **Four-Tier Complexity Heuristics**
 ```python
-# Hard tasks (Gemini Pro)
-- Keywords: "prove", "derivation", "complexity", "algorithm", "optimize", "theorem", "rigorous", "step-by-step", "policy critique", "ambiguity", "counterfactual", "comprehensive", "detailed analysis", "synthesis", "evaluation"
-- Length: > 100 words or > 3000 context words
-- Content: "comprehensive" or "detailed" in question
+# Very complex tasks (Gemini Pro)
+- Keywords: "prove", "derivation", "complexity", "algorithm", "optimize", "theorem", "rigorous", "step-by-step", "policy critique", "ambiguity", "counterfactual", "comprehensive", "detailed analysis", "synthesis", "evaluation", "research", "investigation", "comprehensive study"
+- Length: > 120 words or > 4000 context words
+- Content: "comprehensive", "detailed", or "research" in question
 
-# Medium tasks (Qwen)
-- Keywords: "analyze", "explain", "compare", "evaluate", "summarize", "extract", "classify", "identify", "describe", "discuss", "reasoning", "context", "enhance", "select", "consolidate"
-- Length: 10-100 words or 200-3000 context words
-- Content: "reasoning" or "context" in question
+# Hard/long context tasks (NVIDIA Large)
+- Keywords: "analyze", "explain", "compare", "evaluate", "summarize", "extract", "classify", "identify", "describe", "discuss", "synthesis", "consolidate", "process", "generate", "create", "develop", "build", "construct"
+- Length: > 50 words or > 1500 context words
+- Content: "synthesis", "generate", or "create" in question
 
-# Simple tasks (Llama)
-- Keywords: "what", "how", "when", "where", "who", "yes", "no", "count", "list", "find"
+# Reasoning tasks (NVIDIA Medium - Qwen)
+- Keywords: "reasoning", "context", "enhance", "select", "decide", "choose", "determine", "assess", "judge", "consider", "think", "reason", "logic", "inference", "deduction", "analysis", "interpretation"
+- Length: > 20 words or > 800 context words
+- Content: "enhance", "context", "select", or "decide" in question
+
+# Simple tasks (NVIDIA Small - Llama)
+- Keywords: "what", "how", "when", "where", "who", "yes", "no", "count", "list", "find", "search", "lookup"
 - Length: ≤ 10 words or ≤ 200 context words
 ```
 
-## Benefits of Corrected Assignments
+### **Flexible Summarization Logic**
+```python
+# Dynamic model selection for summarization
+if len(text) > 1500:
+    use_nvidia_large()  # Better for long context
+else:
+    use_nvidia_small()  # Cost-effective for short text
+```
+
+## Benefits of Three-Tier System
 
 ### **Performance Improvements**
-- **Better reasoning** for medium complexity tasks with Qwen
-- **Faster execution** for simple tasks with Llama
-- **Higher quality** for complex tasks with Gemini Pro
+- **Better reasoning** for thinking tasks with Qwen's thinking mode
+- **Enhanced processing** for long context with NVIDIA Large
+- **Faster execution** for simple tasks with NVIDIA Small
+- **Higher quality** for very complex tasks with Gemini Pro
 
 ### **Cost Optimization**
-- **Reduced Gemini usage** for tasks that don't need its full capabilities
+- **Reduced Gemini usage** for tasks that don't need advanced reasoning
 - **Better task distribution** across model capabilities
+- **Flexible summarization** using appropriate models based on context length
 - **Maintained efficiency** for simple tasks
 
 ### **Quality Improvements**
-- **Better intent detection** with Qwen's reasoning
-- **Improved memory operations** with better context understanding
-- **Enhanced search operations** with better relevance filtering
-- **More accurate content processing** with reasoning capabilities
+- **Better reasoning capabilities** with Qwen for decision-making tasks
+- **Improved content processing** with NVIDIA Large for long context
+- **Enhanced memory operations** with better context understanding
+- **More accurate search operations** with specialized models
+- **Dynamic model selection** for optimal performance
 
 ## Verification Checklist
 
-- ✅ All easy tasks use Llama (NVIDIA small)
-- ✅ All medium tasks use Qwen
-- ✅ All hard tasks use Gemini Pro
-- ✅ Model selection logic properly categorizes tasks
+- ✅ All easy tasks use NVIDIA Small (Llama-8b-instruct)
+- ✅ All reasoning tasks use NVIDIA Medium (Qwen-3-next-80b-a3b-thinking)
+- ✅ All hard/long context tasks use NVIDIA Large (GPT-OSS-120b)
+- ✅ All very complex tasks use Gemini Pro
+- ✅ Flexible summarization implemented with dynamic model selection
+- ✅ Model selection logic properly categorizes tasks by complexity and reasoning requirements
 - ✅ No linting errors in modified files
 - ✅ All functions have proper fallback mechanisms
 - ✅ Error handling is maintained for all changes
 
 ## Configuration
 
-The system is ready to use with the environment variable:
+The system is ready to use with the environment variables:
 ```bash
+NVIDIA_SMALL=meta/llama-3.1-8b-instruct
 NVIDIA_MEDIUM=qwen/qwen3-next-80b-a3b-thinking
+NVIDIA_LARGE=openai/gpt-oss-120b
 ```
 
-All changes maintain backward compatibility and include proper error handling.
+All changes maintain backward compatibility and include proper error handling with fallback mechanisms.

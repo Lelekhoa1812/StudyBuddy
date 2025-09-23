@@ -2,12 +2,12 @@
 import re, asyncio, time, json
 from typing import List, Dict, Any, Tuple
 from helpers.setup import logger, embedder, gemini_rotator, nvidia_rotator
-from utils.api.router import select_model, generate_answer_with_model, qwen_chat_completion
+from utils.api.router import select_model, generate_answer_with_model, qwen_chat_completion, nvidia_large_chat_completion
 from utils.service.summarizer import llama_summarize
 
 
 async def extract_search_keywords(user_query: str, nvidia_rotator) -> List[str]:
-    """Extract intelligent search keywords from user query using Qwen agent."""
+    """Extract intelligent search keywords from user query using NVIDIA Large agent."""
     if not nvidia_rotator:
         # Fallback: simple keyword extraction
         words = re.findall(r'\b\w+\b', user_query.lower())
@@ -28,8 +28,8 @@ Return only the keywords, separated by spaces, no other text."""
         
         user_prompt = f"User query: {user_query}\n\nExtract search keywords:"
         
-        # Use Qwen for better keyword extraction
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better keyword extraction
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         keywords = [kw.strip() for kw in response.split() if kw.strip()]
         return keywords[:5] if keywords else [user_query]
@@ -64,8 +64,8 @@ Return as JSON array of objects."""
         
         user_prompt = f"User query: {user_query}\n\nGenerate search strategies:"
         
-        # Use Qwen for better strategy generation
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better strategy generation
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         try:
             strategies = json.loads(response)
@@ -290,7 +290,7 @@ async def fetch_and_process_content(url: str, title: str, user_query: str, nvidi
 
 
 async def extract_relevant_content(content: str, user_query: str, nvidia_rotator) -> str:
-    """Use Qwen agent to extract only the content relevant to the user query."""
+    """Use NVIDIA Large agent to extract only the content relevant to the user query."""
     if not nvidia_rotator:
         # Fallback: return first 2000 chars
         return content[:2000]
@@ -324,8 +324,8 @@ Return only the relevant content, no additional commentary."""
         
         user_prompt = f"User Query: {user_query}\n\nWeb Content:\n{content}\n\nExtract relevant information:"
         
-        # Use Qwen for better content extraction
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better content extraction
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         return response.strip() if response.strip() else ""
         
@@ -335,7 +335,7 @@ Return only the relevant content, no additional commentary."""
 
 
 async def assess_content_quality(content: str, nvidia_rotator) -> Dict[str, Any]:
-    """Assess content quality using Qwen agent."""
+    """Assess content quality using NVIDIA Large agent."""
     if not nvidia_rotator or not content:
         return {"quality_score": 0.5, "issues": [], "strengths": []}
     
@@ -349,8 +349,8 @@ Consider: accuracy, completeness, clarity, authority, recency, bias, factual cla
         
         user_prompt = f"Assess this content quality:\n\n{content[:2000]}"
         
-        # Use Qwen for better quality assessment
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better quality assessment
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         try:
             # Try to parse JSON response
@@ -413,8 +413,8 @@ Focus on factual claims, statistics, and verifiable information."""
         
         user_prompt = f"Main content:\n{content[:1000]}\n\nOther sources:\n{comparison_text[:2000]}\n\nAnalyze consistency:"
         
-        # Use Qwen for better cross-validation
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better cross-validation
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         try:
             validation = json.loads(response)
@@ -480,8 +480,8 @@ Be clear and direct."""
         
         user_prompt = f"Summarize this content:\n\n{content}"
         
-        # Use Qwen for better summarization
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large for better summarization
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         return response.strip() if response.strip() else content[:200] + "..."
         

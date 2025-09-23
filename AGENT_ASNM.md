@@ -3,7 +3,7 @@
 ## Overview
 This document summarizes the corrected task assignments to ensure proper model hierarchy:
 - **Easy tasks** (immediate execution, simple) → **Llama** (NVIDIA small)
-- **Medium tasks** (accurate, reasoning, not too time-consuming) → **DeepSeek**
+- **Medium tasks** (accurate, reasoning, not too time-consuming) → **Qwen**
 - **Hard tasks** (complex analysis, synthesis, long-form) → **Gemini Pro**
 
 ## Corrected Task Assignments
@@ -16,7 +16,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 - `summarize_qa()` - Basic Q&A summarization
 - `naive_fallback()` - Simple text processing fallback
 
-### ✅ **Medium Tasks - DeepSeek**
+### ✅ **Medium Tasks - Qwen**
 **Purpose**: Accurate reasoning, not too time-consuming
 **Corrected Assignments**:
 
@@ -40,7 +40,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 
 #### **Content Processing** (`utils/service/summarizer.py`)
 - `clean_chunk_text()` - Content cleaning with reasoning
-- `deepseek_summarize()` - Medium complexity summarization
+- `qwen_summarize()` - Medium complexity summarization
 
 #### **Chat Operations** (`routes/chats.py`)
 - `generate_query_variations()` - Query variation generation (CORRECTED)
@@ -58,32 +58,32 @@ This document summarizes the corrected task assignments to ensure proper model h
 
 ### 1. **Intent Detection** (`memo/plan/intent.py`)
 - **Before**: Used Llama for simple classification
-- **After**: Uses DeepSeek for better reasoning about user intent
+- **After**: Uses Qwen for better reasoning about user intent
 - **Reason**: Requires understanding context and nuance
 
 ### 2. **Memory Selection** (`memo/plan/execution.py`)
 - **Before**: Used Llama for memory selection
-- **After**: Uses DeepSeek for better reasoning about relevance
+- **After**: Uses Qwen for better reasoning about relevance
 - **Reason**: Requires understanding context relationships
 
 ### 3. **Context Enhancement** (`memo/retrieval.py`)
 - **Before**: Used Llama for enhancement decisions
-- **After**: Uses DeepSeek for better reasoning about context value
+- **After**: Uses Qwen for better reasoning about context value
 - **Reason**: Requires understanding question-context relationships
 
 ### 4. **Question Enhancement** (`memo/retrieval.py`)
 - **Before**: Used Llama for question enhancement
-- **After**: Uses DeepSeek for better reasoning about enhancement
+- **After**: Uses Qwen for better reasoning about enhancement
 - **Reason**: Requires understanding conversation flow and context
 
 ### 5. **Memory Consolidation** (`memo/consolidation.py`)
 - **Before**: Used Llama for memory consolidation
-- **After**: Uses DeepSeek for better reasoning about similarity
+- **After**: Uses Qwen for better reasoning about similarity
 - **Reason**: Requires understanding content relationships
 
 ### 6. **Query Variation Generation** (`routes/chats.py`)
 - **Before**: Used Llama for query variations
-- **After**: Uses DeepSeek for better reasoning about variations
+- **After**: Uses Qwen for better reasoning about variations
 - **Reason**: Requires understanding question intent and context
 
 ## Enhanced Model Selection Logic
@@ -95,7 +95,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 - Length: > 100 words or > 3000 context words
 - Content: "comprehensive" or "detailed" in question
 
-# Medium tasks (DeepSeek)
+# Medium tasks (Qwen)
 - Keywords: "analyze", "explain", "compare", "evaluate", "summarize", "extract", "classify", "identify", "describe", "discuss", "reasoning", "context", "enhance", "select", "consolidate"
 - Length: 10-100 words or 200-3000 context words
 - Content: "reasoning" or "context" in question
@@ -108,7 +108,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 ## Benefits of Corrected Assignments
 
 ### **Performance Improvements**
-- **Better reasoning** for medium complexity tasks with DeepSeek
+- **Better reasoning** for medium complexity tasks with Qwen
 - **Faster execution** for simple tasks with Llama
 - **Higher quality** for complex tasks with Gemini Pro
 
@@ -118,7 +118,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 - **Maintained efficiency** for simple tasks
 
 ### **Quality Improvements**
-- **Better intent detection** with DeepSeek's reasoning
+- **Better intent detection** with Qwen's reasoning
 - **Improved memory operations** with better context understanding
 - **Enhanced search operations** with better relevance filtering
 - **More accurate content processing** with reasoning capabilities
@@ -126,7 +126,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 ## Verification Checklist
 
 - ✅ All easy tasks use Llama (NVIDIA small)
-- ✅ All medium tasks use DeepSeek
+- ✅ All medium tasks use Qwen
 - ✅ All hard tasks use Gemini Pro
 - ✅ Model selection logic properly categorizes tasks
 - ✅ No linting errors in modified files
@@ -137,7 +137,7 @@ This document summarizes the corrected task assignments to ensure proper model h
 
 The system is ready to use with the environment variable:
 ```bash
-NVIDIA_MEDIUM=deepseek-ai/deepseek-v3.1
+NVIDIA_MEDIUM=qwen/qwen3-next-80b-a3b-thinking
 ```
 
 All changes maintain backward compatibility and include proper error handling.

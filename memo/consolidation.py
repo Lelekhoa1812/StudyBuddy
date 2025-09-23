@@ -179,9 +179,9 @@ Return the consolidated content in the same format as the original memories."""
 
 Create a single consolidated memory:"""
                     
-                    # Use DeepSeek for better memory consolidation reasoning
-                    from utils.api.router import deepseek_chat_completion
-                    consolidated_content = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+                    # Use Qwen for better memory consolidation reasoning
+                    from utils.api.router import qwen_chat_completion
+                    consolidated_content = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
                     
                     return {
                         "content": consolidated_content.strip(),

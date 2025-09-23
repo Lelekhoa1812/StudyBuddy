@@ -11,12 +11,12 @@ from typing import List, Dict, Any
 
 from utils.logger import get_logger
 from utils.api.rotator import robust_post_json
-from utils.api.router import deepseek_chat_completion
+from utils.api.router import qwen_chat_completion
 
 logger = get_logger("NVIDIA_INTEGRATION", __name__)
 
 NVIDIA_SMALL = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")
-NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "deepseek-ai/deepseek-v3.1")
+NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "qwen/qwen3-next-80b-a3b-thinking")
 
 async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rotator) -> str:
     """
@@ -40,14 +40,14 @@ async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rot
         logger.warning(f"NVIDIA chat error: {e} • response: {data}")
         return ""
 
-async def deepseek_chat(system_prompt: str, user_prompt: str, rotator) -> str:
+async def qwen_chat(system_prompt: str, user_prompt: str, rotator) -> str:
     """
-    DeepSeek chat call for medium complexity tasks with thinking mode.
+    Qwen chat call for medium complexity tasks with thinking mode.
     """
     try:
-        return await deepseek_chat_completion(system_prompt, user_prompt, rotator)
+        return await qwen_chat_completion(system_prompt, user_prompt, rotator)
     except Exception as e:
-        logger.warning(f"DeepSeek chat error: {e}")
+        logger.warning(f"Qwen chat error: {e}")
         return ""
 
 def safe_json(s: str) -> Any:
@@ -90,15 +90,15 @@ async def summarize_qa(question: str, answer: str, rotator) -> str:
 
 async def files_relevance(question: str, file_summaries: List[Dict[str, str]], rotator) -> Dict[str, bool]:
     """
-    Ask DeepSeek model to mark each file as relevant (true) or not (false) for the question.
+    Ask Qwen model to mark each file as relevant (true) or not (false) for the question.
     Returns {filename: bool}
     """
     sys = "You classify file relevance. Return STRICT JSON only with shape {\"relevance\":[{\"filename\":\"...\",\"relevant\":true|false}]}."
     items = [{"filename": f["filename"], "summary": f.get("summary","")} for f in file_summaries]
     user = f"Question: {question}\n\nFiles:\n{json.dumps(items, ensure_ascii=False)}\n\nReturn JSON only."
     
-    # Use DeepSeek for better JSON parsing and reasoning
-    out = await deepseek_chat(sys, user, rotator)
+    # Use Qwen for better JSON parsing and reasoning
+    out = await qwen_chat(sys, user, rotator)
     
     data = safe_json(out) or {}
     rels = {}
@@ -116,7 +116,7 @@ async def files_relevance(question: str, file_summaries: List[Dict[str, str]], r
 
 async def related_recent_context(question: str, recent_memories: List[str], rotator) -> str:
     """
-    Use DeepSeek to select related items from recent memories.
+    Use Qwen to select related items from recent memories.
     Enhanced function for better context memory ability.
     """
     if not recent_memories:
@@ -127,9 +127,9 @@ async def related_recent_context(question: str, recent_memories: List[str], rota
     user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' lines concatenated."
     
     try:
-        # Use DeepSeek for better reasoning and context selection
-        out = await deepseek_chat(sys, user, rotator)
+        # Use Qwen for better reasoning and context selection
+        out = await qwen_chat(sys, user, rotator)
         return out.strip()
     except Exception as e:
-        logger.warning(f"Recent-related DeepSeek error: {e}")
+        logger.warning(f"Recent-related Qwen error: {e}")
         return ""

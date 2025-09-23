@@ -201,9 +201,9 @@ Return only the variations, one per line, no numbering or extra text."""
         
         user_prompt = f"Original question: {question}\n\nGenerate query variations:"
         
-        # Use DeepSeek for better query variation generation reasoning
-        from utils.api.router import deepseek_chat_completion
-        response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        # Use Qwen for better query variation generation reasoning
+        from utils.api.router import qwen_chat_completion
+        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
         
         # Parse variations
         variations = [line.strip() for line in response.split('\n') if line.strip()]

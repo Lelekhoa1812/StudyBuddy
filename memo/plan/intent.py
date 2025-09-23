@@ -110,9 +110,9 @@ Respond with only the intent name (e.g., "ENHANCEMENT")."""
             
             user_prompt = f"Question: {question}\n\nWhat is the user's intent?"
             
-            # Use DeepSeek for better intent detection reasoning
-            from utils.api.router import deepseek_chat_completion
-            response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            # Use Qwen for better intent detection reasoning
+            from utils.api.router import qwen_chat_completion
+            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             # Parse response
             response_upper = response.strip().upper()

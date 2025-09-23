@@ -221,9 +221,9 @@ Semantic: {semantic_context[:200]}...
 
 Should this question be enhanced with context?"""
                     
-                    # Use DeepSeek for better context enhancement reasoning
-                    from utils.api.router import deepseek_chat_completion
-                    response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+                    # Use Qwen for better context enhancement reasoning
+                    from utils.api.router import qwen_chat_completion
+                    response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
                     
                     return "YES" in response.upper()
                     
@@ -267,9 +267,9 @@ RELEVANT CONTEXT:
 
 Create an enhanced version that incorporates this context naturally."""
             
-            # Use DeepSeek for better question enhancement reasoning
-            from utils.api.router import deepseek_chat_completion
-            enhanced_question = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            # Use Qwen for better question enhancement reasoning
+            from utils.api.router import qwen_chat_completion
+            enhanced_question = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             return enhanced_question.strip(), True
             
@@ -306,9 +306,9 @@ RELEVANT CONTEXT:
 
 Create an enhanced version that incorporates this context naturally."""
             
-            # Use DeepSeek for better instruction enhancement reasoning
-            from utils.api.router import deepseek_chat_completion
-            enhanced_instructions = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            # Use Qwen for better instruction enhancement reasoning
+            from utils.api.router import qwen_chat_completion
+            enhanced_instructions = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             return enhanced_instructions.strip(), True
             

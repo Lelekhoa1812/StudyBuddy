@@ -12,14 +12,14 @@ GEMINI_MED   = os.getenv("GEMINI_MED",   "gemini-2.5-flash")
 GEMINI_PRO   = os.getenv("GEMINI_PRO",   "gemini-2.5-pro")
 
 # NVIDIA small default (can be override)
-NVIDIA_SMALL = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")   # Llama model for easy complexity tasks
-NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "deepseek-ai/deepseek-v3.1")  # DeepSeek model for medium complexity tasks
+NVIDIA_SMALL = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")         # Llama model for easy complexity tasks
+NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "qwen/qwen3-next-80b-a3b-thinking") # Qwen model for medium complexity tasks
 
 def select_model(question: str, context: str) -> Dict[str, Any]:
     """
     Enhanced complexity heuristic with proper model hierarchy:
     - Easy tasks (immediate execution, simple) -> Llama (NVIDIA small)
-    - Medium tasks (accurate, reasoning, not too time-consuming) -> DeepSeek
+    - Medium tasks (accurate, reasoning, not too time-consuming) -> Qwen
     - Hard tasks (complex analysis, synthesis, long-form) -> Gemini Pro
     """
     qlen = len(question.split())
@@ -61,8 +61,8 @@ def select_model(question: str, context: str) -> Dict[str, Any]:
         # Use Gemini Pro for very complex tasks requiring advanced reasoning
         return {"provider": "gemini", "model": GEMINI_PRO}
     elif is_medium:
-        # Use DeepSeek for medium complexity tasks requiring reasoning but not too time-consuming
-        return {"provider": "deepseek", "model": NVIDIA_MEDIUM}
+        # Use Qwen for medium complexity tasks requiring reasoning but not too time-consuming
+        return {"provider": "qwen", "model": NVIDIA_MEDIUM}
     else:
         # Use NVIDIA small (Llama) for simple tasks requiring immediate execution
         return {"provider": "nvidia", "model": NVIDIA_SMALL}
@@ -124,16 +124,16 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             logger.warning(f"Unexpected NVIDIA response: {data}, error: {e}")
             return "I couldn't parse the model response."
 
-    elif provider == "deepseek":
-        # Use DeepSeek for medium complexity tasks
-        return await deepseek_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+    elif provider == "qwen":
+        # Use Qwen for medium complexity tasks
+        return await qwen_chat_completion(system_prompt, user_prompt, nvidia_rotator)
 
     return "Unsupported provider."
 
 
-async def deepseek_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator) -> str:
+async def qwen_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator) -> str:
     """
-    DeepSeek chat completion with thinking mode enabled.
+    Qwen chat completion with thinking mode enabled.
     Uses the NVIDIA API rotator for key management.
     """
     key = nvidia_rotator.get_key() or ""
@@ -145,17 +145,16 @@ async def deepseek_chat_completion(system_prompt: str, user_prompt: str, nvidia_
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.2,
+        "temperature": 0.6,
         "top_p": 0.7,
         "max_tokens": 8192,
-        "extra_body": {"chat_template_kwargs": {"thinking": True}},
         "stream": True
     }
     
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
     
-    logger.info(f"[DEEPSEEK] API call - Model: {NVIDIA_MEDIUM}, Key present: {bool(key)}")
-    logger.info(f"[DEEPSEEK] System prompt length: {len(system_prompt)}, User prompt length: {len(user_prompt)}")
+    logger.info(f"[QWEN] API call - Model: {NVIDIA_MEDIUM}, Key present: {bool(key)}")
+    logger.info(f"[QWEN] System prompt length: {len(system_prompt)}, User prompt length: {len(user_prompt)}")
     
     try:
         # For streaming, we need to handle the response differently
@@ -164,7 +163,7 @@ async def deepseek_chat_completion(system_prompt: str, user_prompt: str, nvidia_
             response = await client.post(url, headers=headers, json=payload)
             
             if response.status_code in (401, 403, 429) or (500 <= response.status_code < 600):
-                logger.warning(f"HTTP {response.status_code} from DeepSeek provider. Rotating key and retrying")
+                logger.warning(f"HTTP {response.status_code} from Qwen provider. Rotating key and retrying")
                 nvidia_rotator.rotate()
                 # Retry once with new key
                 key = nvidia_rotator.get_key() or ""
@@ -190,7 +189,7 @@ async def deepseek_chat_completion(system_prompt: str, user_prompt: str, nvidia_
                             # Handle reasoning content (thinking)
                             reasoning = delta.get("reasoning_content")
                             if reasoning:
-                                logger.debug(f"[DEEPSEEK] Reasoning: {reasoning}")
+                                logger.debug(f"[QWEN] Reasoning: {reasoning}")
                             
                             # Handle regular content
                             chunk_content = delta.get("content")
@@ -200,11 +199,11 @@ async def deepseek_chat_completion(system_prompt: str, user_prompt: str, nvidia_
                         continue
             
             if not content or content.strip() == "":
-                logger.warning(f"Empty content from DeepSeek model")
+                logger.warning(f"Empty content from Qwen model")
                 return "I received an empty response from the model."
             
             return content.strip()
             
     except Exception as e:
-        logger.warning(f"DeepSeek API error: {e}")
-        return "I couldn't process the request with DeepSeek model."
+        logger.warning(f"Qwen API error: {e}")
+        return "I couldn't process the request with Qwen model."

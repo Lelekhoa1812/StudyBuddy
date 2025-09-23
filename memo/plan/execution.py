@@ -349,9 +349,9 @@ Available Q&A Memories:
 
 Select the most relevant Q&A memories:"""
             
-            # Use DeepSeek for better memory selection reasoning
-            from utils.api.router import deepseek_chat_completion
-            response = await deepseek_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            # Use Qwen for better memory selection reasoning
+            from utils.api.router import qwen_chat_completion
+            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
             
             return response.strip()
             

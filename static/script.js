@@ -740,12 +740,21 @@
   
   function renderAssistantMarkdown(container, markdown, isReport) {
     try {
+      // Configure marked to keep code blocks for highlight.js
       const htmlContent = marked.parse(markdown);
       container.innerHTML = htmlContent;
       // Render Mermaid if present
       renderMermaidInElement(container);
       // Add copy buttons to code blocks
       addCopyButtonsToCodeBlocks(container);
+      // Syntax highlight code blocks
+      try {
+        container.querySelectorAll('pre code').forEach((block) => {
+          if (window.hljs && window.hljs.highlightElement) {
+            window.hljs.highlightElement(block);
+          }
+        });
+      } catch {}
       // Add download PDF button for reports
       if (isReport) addDownloadPdfButton(container, markdown);
     } catch (e) {

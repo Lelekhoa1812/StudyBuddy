@@ -381,7 +381,21 @@
   // Expose functions for external use
   window.__sb_get_current_session = () => currentSessionId;
   window.__sb_set_current_session = (sessionId) => selectSession(sessionId);
-  window.__sb_append_message = appendMessage;
+  // Forward to the unified renderer exported by script.js, with safety guard
+  window.__sb_append_message = (role, content, isReport = false) => {
+    if (window.appendMessage) {
+      window.appendMessage(role, content, isReport);
+    } else {
+      // Fallback basic rendering if script.js didn't load for some reason
+      const messages = document.getElementById('messages');
+      if (!messages) return;
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = content;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+  };
   window.__sb_load_sessions = loadSessions;
   window.__sb_update_session_name = updateSessionName;
   

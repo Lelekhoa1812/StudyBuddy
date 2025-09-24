@@ -316,6 +316,7 @@ async def chat(
     
     try:
         # Check if this is the first message in the session for auto-naming
+        session_name = None
         if session_id:
             existing_messages = rag.db["chat_sessions"].count_documents({
                 "user_id": user_id, 
@@ -323,7 +324,7 @@ async def chat(
                 "session_id": session_id
             })
             
-            # If this is the first user message, create session and trigger auto-naming
+            # If this is the first user message, create session and trigger immediate auto-naming
             if existing_messages == 0:
                 # Create session record first
                 session_data = {
@@ -331,20 +332,34 @@ async def chat(
                     "project_id": project_id,
                     "session_id": session_id,
                     "session_name": "New Chat",
-                    "is_auto_named": True,
+                    "is_auto_named": False,  # Will be updated by auto-naming
                     "created_at": datetime.now(timezone.utc),
                     "timestamp": time.time()
                 }
                 rag.db["chat_sessions"].insert_one(session_data)
                 
-                # Now trigger auto-naming
+                # Trigger immediate auto-naming
                 try:
-                    await _auto_name_session(user_id, project_id, session_id, question)
-                    logger.info(f"[CHAT] Auto-named session {session_id}")
+                    from helpers.namer import auto_name_session_immediate
+                    session_name = await auto_name_session_immediate(
+                        user_id, project_id, session_id, question, nvidia_rotator, rag.db
+                    )
+                    if session_name:
+                        logger.info(f"[CHAT] Auto-named session {session_id} to '{session_name}'")
+                    else:
+                        logger.warning(f"[CHAT] Auto-naming failed for session {session_id}")
                 except Exception as e:
                     logger.warning(f"[CHAT] Auto-naming failed: {e}")
         
-        return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
+        # Get the chat response
+        chat_response = await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
+        
+        # Add session information to the response if auto-naming occurred
+        if session_name:
+            chat_response.session_name = session_name
+            chat_response.session_id = session_id
+        
+        return chat_response
     except asyncio.TimeoutError:
         logger.error("[CHAT] Chat request timed out after 120 seconds")
         update_chat_status(session_id, "error", "Request timed out", 0)
@@ -830,64 +845,3 @@ async def chat_with_search(
     return ChatAnswerResponse(answer=answer, sources=merged_sources, relevant_files=merged_files)
 
 
-async def _auto_name_session(user_id: str, project_id: str, session_id: str, first_query: str):
-    """Helper function to auto-name a session based on the first query"""
-    try:
-        if not nvidia_rotator:
-            return
-        
-        # Use NVIDIA_SMALL to generate a 2-3 word session name
-        sys_prompt = """You are an expert at creating concise, descriptive session names.
-
-Given a user's first query in a chat session, create a 2-3 word session name that captures the main topic or intent.
-
-Rules:
-- Use 2-3 words maximum
-- Be descriptive but concise
-- Use title case (capitalize first letter of each word)
-- Focus on the main topic or question type
-- Avoid generic terms like "Question" or "Chat"
-
-Examples:
-- "Machine Learning Basics" for "What is machine learning?"
-- "Python Functions" for "How do I create functions in Python?"
-- "Data Analysis" for "Can you help me analyze this dataset?"
-
-Return only the session name, nothing else."""
-
-        user_prompt = f"First query: {first_query}\n\nCreate a 2-3 word session name:"
-        
-        from utils.api.router import generate_answer_with_model
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        
-        response = await generate_answer_with_model(
-            selection=selection,
-            system_prompt=sys_prompt,
-            user_prompt=user_prompt,
-            gemini_rotator=None,
-            nvidia_rotator=nvidia_rotator
-        )
-        
-        # Clean up the response
-        session_name = response.strip()
-        # Remove quotes if present
-        if session_name.startswith('"') and session_name.endswith('"'):
-            session_name = session_name[1:-1]
-        if session_name.startswith("'") and session_name.endswith("'"):
-            session_name = session_name[1:-1]
-        
-        # Truncate if too long (safety measure)
-        if len(session_name) > 50:
-            session_name = session_name[:47] + "..."
-        
-        # Update the session with the auto-generated name
-        rag.db["chat_sessions"].update_many(
-            {"user_id": user_id, "project_id": project_id, "session_id": session_id},
-            {"$set": {"session_name": session_name, "is_auto_named": True}}
-        )
-        
-        logger.info(f"[CHAT] Auto-named session '{session_id}' to '{session_name}'")
-        
-    except Exception as e:
-        logger.warning(f"[CHAT] Auto-naming failed: {e}")
-        # Don't raise the exception to avoid breaking the chat flow

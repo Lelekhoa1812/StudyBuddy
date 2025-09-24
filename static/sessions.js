@@ -331,11 +331,32 @@
     messages.scrollTop = messages.scrollHeight;
   }
   
+  // Function to update session name in UI immediately
+  function updateSessionName(sessionId, newName) {
+    // Update the session in our local sessions array
+    const sessionIndex = sessions.findIndex(s => s.session_id === sessionId);
+    if (sessionIndex !== -1) {
+      sessions[sessionIndex].name = newName;
+      sessions[sessionIndex].is_auto_named = true;
+      
+      // Update the dropdown to reflect the new name
+      updateSessionDropdown();
+      
+      // If this is the currently selected session, update the dropdown value
+      if (currentSessionId === sessionId) {
+        sessionDropdown.value = sessionId;
+      }
+      
+      console.log(`[SESSIONS] Updated session name to: ${newName}`);
+    }
+  }
+  
   // Expose functions for external use
   window.__sb_get_current_session = () => currentSessionId;
   window.__sb_set_current_session = (sessionId) => selectSession(sessionId);
   window.__sb_append_message = appendMessage;
   window.__sb_load_sessions = loadSessions;
+  window.__sb_update_session_name = updateSessionName;
   
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {

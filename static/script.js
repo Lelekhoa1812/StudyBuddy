@@ -583,6 +583,15 @@
           if (data.sources && data.sources.length > 0) {
             appendSources(data.sources);
           }
+          
+          // Handle session auto-naming if returned
+          if (data.session_name && data.session_id) {
+            // Update the session name in the UI immediately
+            if (window.__sb_update_session_name) {
+              window.__sb_update_session_name(data.session_id, data.session_name);
+            }
+          }
+          
           await saveChatMessage(
             user.user_id,
             currentProject.project_id,

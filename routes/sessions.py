@@ -157,67 +157,15 @@ async def auto_name_session(
 ):
     """Automatically name a session based on the first query using NVIDIA_SMALL API"""
     try:
-        if not nvidia_rotator:
-            return MessageResponse(message="Auto-naming not available")
+        from helpers.namer import auto_name_session_immediate
         
-        # Use NVIDIA_SMALL to generate a 2-3 word session name
-        sys_prompt = """You are an expert at creating concise, descriptive session names.
-
-Given a user's first query in a chat session, create a 2-3 word session name that captures the main topic or intent.
-
-Rules:
-- Use 2-3 words maximum
-- Be descriptive but concise
-- Use title case (capitalize first letter of each word)
-- Focus on the main topic or question type
-- Avoid generic terms like "Question" or "Chat"
-
-Examples:
-- "Machine Learning Basics" for "What is machine learning?"
-- "Python Functions" for "How do I create functions in Python?"
-- "Data Analysis" for "Can you help me analyze this dataset?"
-
-Return only the session name, nothing else."""
-
-        user_prompt = f"First query: {first_query}\n\nCreate a 2-3 word session name:"
+        session_name = await auto_name_session_immediate(
+            user_id, project_id, session_id, first_query, nvidia_rotator, rag.db
+        )
         
-        try:
-            from utils.api.router import generate_answer_with_model
-            selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-            
-            response = await generate_answer_with_model(
-                selection=selection,
-                system_prompt=sys_prompt,
-                user_prompt=user_prompt,
-                gemini_rotator=None,
-                nvidia_rotator=nvidia_rotator
-            )
-            
-            # Clean up the response
-            session_name = response.strip()
-            # Remove quotes if present
-            if session_name.startswith('"') and session_name.endswith('"'):
-                session_name = session_name[1:-1]
-            if session_name.startswith("'") and session_name.endswith("'"):
-                session_name = session_name[1:-1]
-            
-            # Truncate if too long (safety measure)
-            if len(session_name) > 50:
-                session_name = session_name[:47] + "..."
-            
-            # Update the session with the auto-generated name
-            result = rag.db["chat_sessions"].update_many(
-                {"user_id": user_id, "project_id": project_id, "session_id": session_id},
-                {"$set": {"session_name": session_name, "is_auto_named": True}}
-            )
-            
-            if result.modified_count > 0:
-                return MessageResponse(message=f"Session auto-named: {session_name}")
-            else:
-                return MessageResponse(message="Session not found for auto-naming")
-                
-        except Exception as e:
-            logger.warning(f"[SESSIONS] Auto-naming failed: {e}")
+        if session_name:
+            return MessageResponse(message=f"Session auto-named: {session_name}")
+        else:
             return MessageResponse(message="Auto-naming failed, keeping default name")
             
     except Exception as e:

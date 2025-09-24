@@ -43,6 +43,8 @@ class ChatAnswerResponse(BaseModel):
     answer: str
     sources: List[Dict[str, Any]]
     relevant_files: Optional[List[str]] = None
+    session_name: Optional[str] = None
+    session_id: Optional[str] = None
 
 class HealthResponse(BaseModel):
     ok: bool

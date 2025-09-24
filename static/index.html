@@ -194,18 +194,31 @@
             <div class="card-header">
               <h2>💬 Chat with Documents</h2>
               <p>Ask questions about your uploaded materials and get AI-powered answers</p>
-              <div class="session-controls" style="margin-top: 16px; display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
-                <div class="session-dropdown-wrapper" style="display:flex; align-items:center; gap:4px;">
+              <div class="session-controls">
+                <div class="session-dropdown-wrapper">
                   <select id="session-dropdown" class="session-dropdown">
                     <option value="">Select Session</option>
                   </select>
-                  <button id="create-session-btn" class="btn-icon" title="Create new session">+</button>
                 </div>
                 <div class="session-actions" style="display:none;">
-                  <button id="rename-session-btn" class="btn-icon" title="Rename session">✏️</button>
-                  <button id="delete-session-btn" class="btn-icon" title="Delete session">🗑️</button>
+                  <button id="rename-session-btn" class="btn-icon session-action-btn" title="Rename session">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button id="delete-session-btn" class="btn-icon session-action-btn" title="Delete session">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3,6 5,6 21,6"/>
+                      <path d="M19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"/>
+                      <line x1="10" y1="11" x2="10" y2="17"/>
+                      <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                  </button>
                 </div>
-                <button id="clear-chat-btn" class="btn-secondary">Clear History</button>
+                <div class="clear-history-wrapper">
+                  <button id="clear-chat-btn" class="btn-secondary">Clear History</button>
+                </div>
               </div>
             </div>
             <div id="chat">

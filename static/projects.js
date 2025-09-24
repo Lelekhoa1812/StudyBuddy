@@ -44,20 +44,31 @@
 
   async function loadProjects() {
     const user = window.__sb_get_user();
-    if (!user) return;
+    if (!user) {
+      console.log('[PROJECTS] No user found, skipping project load');
+      return;
+    }
+
+    console.log('[PROJECTS] Loading projects for user:', user.user_id);
 
     try {
       const response = await fetch(`/projects?user_id=${user.user_id}`);
+      console.log('[PROJECTS] Projects API response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
         projects = data.projects || [];
+        console.log('[PROJECTS] Loaded projects:', projects.length);
+        
         renderProjectList();
         
         // If no projects, show welcome screen
         if (projects.length === 0) {
+          console.log('[PROJECTS] No projects found, showing welcome screen');
           showWelcomeScreen();
         } else {
           // Select first project by default
+          console.log('[PROJECTS] Selecting first project:', projects[0].name);
           selectProject(projects[0]);
         }
         
@@ -65,9 +76,13 @@
         if (window.__sb_update_upload_button) {
           window.__sb_update_upload_button();
         }
+      } else {
+        console.error('[PROJECTS] Failed to load projects, status:', response.status);
+        const errorText = await response.text();
+        console.error('[PROJECTS] Error response:', errorText);
       }
     } catch (error) {
-      console.error('Failed to load projects:', error);
+      console.error('[PROJECTS] Failed to load projects:', error);
     }
   }
 
@@ -113,6 +128,7 @@
   }
 
   function selectProject(project) {
+    console.log('[PROJECTS] Selecting project:', project.name, project.project_id);
     currentProject = project;
     
     // Update UI
@@ -130,25 +146,12 @@
     if (uploadSection) uploadSection.style.display = 'block';
     if (chatSection) chatSection.style.display = 'block';
     
-    // Enable chat functionality when project is selected
-    if (window.__sb_enable_chat) {
-      window.__sb_enable_chat();
-    }
-    
     // Update project list
     renderProjectList();
     
-    // Load chat history
-    loadChatHistory();
-    
     // Store current project in localStorage
     localStorage.setItem('sb_current_project', JSON.stringify(project));
-    
-    // Enable chat if user is authenticated
-    const user = window.__sb_get_user();
-    if (user) {
-      enableChat();
-    }
+    console.log('[PROJECTS] Stored project in localStorage');
     
     // Update page title to show project name
     if (window.__sb_update_page_title) {
@@ -158,15 +161,53 @@
     // Dispatch custom event to notify other scripts that project has changed
     const event = new CustomEvent('projectChanged', { detail: { project } });
     document.dispatchEvent(event);
+    console.log('[PROJECTS] Dispatched projectChanged event');
     
-    // Update upload button if the function exists
-    if (window.__sb_update_upload_button) {
-      window.__sb_update_upload_button();
-    }
-    // Ensure stored files are loaded immediately
-    if (window.__sb_load_stored_files) {
-      window.__sb_load_stored_files();
-    }
+    // Use setTimeout to ensure other scripts are loaded and ready
+    setTimeout(() => {
+      console.log('[PROJECTS] Executing delayed project selection tasks');
+      
+      // Enable chat functionality when project is selected
+      if (window.__sb_enable_chat) {
+        console.log('[PROJECTS] Calling __sb_enable_chat');
+        window.__sb_enable_chat();
+      } else {
+        console.log('[PROJECTS] __sb_enable_chat not available');
+      }
+      
+      // Load chat history
+      if (window.__sb_load_chat_history) {
+        console.log('[PROJECTS] Calling __sb_load_chat_history');
+        window.__sb_load_chat_history();
+      } else {
+        console.log('[PROJECTS] __sb_load_chat_history not available');
+      }
+      
+      // Enable chat if user is authenticated
+      const user = window.__sb_get_user();
+      if (user && window.enableChat) {
+        console.log('[PROJECTS] Calling enableChat');
+        window.enableChat();
+      } else {
+        console.log('[PROJECTS] enableChat not available or no user');
+      }
+      
+      // Update upload button if the function exists
+      if (window.__sb_update_upload_button) {
+        console.log('[PROJECTS] Calling __sb_update_upload_button');
+        window.__sb_update_upload_button();
+      } else {
+        console.log('[PROJECTS] __sb_update_upload_button not available');
+      }
+      
+      // Ensure stored files are loaded immediately
+      if (window.__sb_load_stored_files) {
+        console.log('[PROJECTS] Calling __sb_load_stored_files');
+        window.__sb_load_stored_files();
+      } else {
+        console.log('[PROJECTS] __sb_load_stored_files not available');
+      }
+    }, 100);
   }
 
   function showWelcomeScreen() {

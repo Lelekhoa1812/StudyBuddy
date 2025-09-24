@@ -22,7 +22,10 @@
   function init() {
     setupEventListeners();
     // Load sessions when project changes
-    document.addEventListener('projectChanged', loadSessions);
+    document.addEventListener('projectChanged', (event) => {
+      console.log('[SESSIONS] Project changed event received:', event.detail);
+      loadSessions();
+    });
   }
   
   function setupEventListeners() {
@@ -55,7 +58,10 @@
     const user = window.__sb_get_user();
     const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
     
+    console.log('[SESSIONS] Loading sessions for user:', user?.user_id, 'project:', currentProject?.project_id);
+    
     if (!user || !currentProject) {
+      console.log('[SESSIONS] No user or project, clearing sessions');
       sessions = [];
       updateSessionDropdown();
       return;

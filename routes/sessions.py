@@ -152,6 +152,17 @@ async def rename_session(
         raise HTTPException(500, detail=f"Failed to rename session: {str(e)}")
 
 
+# Some deployments/proxies do not allow PUT; provide POST alias for compatibility
+@app.post("/sessions/rename")
+async def rename_session_post(
+    user_id: str = Form(...),
+    project_id: str = Form(...),
+    session_id: str = Form(...),
+    new_name: str = Form(...)
+):
+    return await rename_session(user_id=user_id, project_id=project_id, session_id=session_id, new_name=new_name)
+
+
 @app.delete("/sessions/delete")
 async def delete_session(
     user_id: str = Form(...),

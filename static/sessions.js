@@ -248,8 +248,9 @@
       formData.append('session_id', currentSessionId);
       formData.append('new_name', newName);
       
+      // Use POST for broader proxy compatibility; backend has alias
       const response = await fetch('/sessions/rename', {
-        method: 'PUT',
+        method: 'POST',
         body: formData
       });
       
@@ -364,7 +365,7 @@
     const sessionIndex = sessions.findIndex(s => s.session_id === sessionId);
     if (sessionIndex !== -1) {
       sessions[sessionIndex].name = newName;
-      sessions[sessionIndex].is_auto_named = true;
+      sessions[sessionIndex].is_auto_named = false;
       
       // Update the dropdown to reflect the new name
       updateSessionDropdown();

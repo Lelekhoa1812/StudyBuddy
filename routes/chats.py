@@ -44,8 +44,8 @@ async def save_chat_message(
         "content": content,
         "timestamp": timestamp or time.time(),
         "created_at": datetime.now(timezone.utc),
-        **({"sources": parsed_sources} if parsed_sources is not None else {}),
         "is_report": bool(is_report or 0),
+        **({"sources": parsed_sources} if parsed_sources is not None else {}),
         **({"session_id": session_id} if session_id else {})
     }
     
@@ -67,8 +67,9 @@ async def get_chat_history(user_id: str, project_id: str, session_id: str = None
         try:
             # Skip messages that don't have required fields
             required_fields = ["user_id", "project_id", "role", "content", "timestamp"]
-            if not all(key in message for key in required_fields):
-                logger.warning(f"[CHAT] Skipping message with missing fields: {list(message.keys())}")
+            missing_fields = [field for field in required_fields if field not in message]
+            if missing_fields:
+                logger.warning(f"[CHAT] Skipping message with missing fields: {missing_fields}")
                 continue
             
             # Additional validation for role field

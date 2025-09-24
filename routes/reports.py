@@ -413,22 +413,34 @@ Create a simple plan for this report."""
 
 
 async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
-    """Execute detailed analysis for each subtask identified in the CoT plan."""
+    """Execute detailed analysis for each subtask with hierarchical section assignment and CoT references."""
     detailed_analysis = {}
     synthesis_strategy = cot_plan.get("synthesis_strategy", {})
+    sections = cot_plan.get("report_structure", {}).get("sections", [])
     
-    for section in cot_plan.get("report_structure", {}).get("sections", []):
+    # Create hierarchical section structure with proper numbering
+    section_number = 1
+    subsection_number = 1
+    agent_context = {}  # Store context from previous agents for CoT references
+    
+    for section in sections:
         section_title = section.get("title", "Unknown Section")
         section_priority = section.get("priority", "important")
+        
+        # Assign section number (1, 2, 3, etc.)
+        section_id = f"{section_number}"
         section_analysis = {
+            "section_id": section_id,
             "title": section_title,
             "purpose": section.get("purpose", ""),
             "priority": section_priority,
             "subtask_results": [],
-            "section_synthesis": ""
+            "section_synthesis": "",
+            "agent_context": agent_context.copy()  # Pass context from previous agents
         }
         
-        # Process each subtask with enhanced detail
+        # Process each subtask with hierarchical subsection assignment
+        subtask_number = 1
         for subtask in section.get("subtasks", []):
             task = subtask.get("task", "")
             reasoning = subtask.get("reasoning", "")
@@ -438,38 +450,65 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
             expected_output = subtask.get("expected_output", "")
             quality_checks = subtask.get("quality_checks", [])
             
-            # Generate comprehensive analysis for this subtask
-            subtask_result = await analyze_subtask_comprehensive(
-                task, reasoning, sources_needed, depth, sub_actions, expected_output, 
-                quality_checks, context_text, web_context, filename, nvidia_rotator, gemini_rotator
+            # Assign subsection number (1.1, 1.2, 2.1, 2.2, etc.)
+            subsection_id = f"{section_number}.{subtask_number}"
+            
+            # Generate comprehensive analysis with CoT references
+            subtask_result = await analyze_subtask_with_cot_references(
+                subsection_id, task, reasoning, sources_needed, depth, sub_actions, 
+                expected_output, quality_checks, context_text, web_context, filename, 
+                agent_context, nvidia_rotator, gemini_rotator
             )
             
+            # Store agent context for next agents
+            agent_context[f"{section_id}.{subtask_number}"] = {
+                "subsection_id": subsection_id,
+                "task": task,
+                "key_findings": extract_key_findings(subtask_result),
+                "evidence": extract_evidence(subtask_result),
+                "conclusions": extract_conclusions(subtask_result)
+            }
+            
             section_analysis["subtask_results"].append({
+                "subsection_id": subsection_id,
                 "task": task,
                 "reasoning": reasoning,
                 "depth": depth,
                 "sub_actions": sub_actions,
                 "expected_output": expected_output,
                 "quality_checks": quality_checks,
-                "analysis": subtask_result
+                "analysis": subtask_result,
+                "agent_context": agent_context.copy()
             })
+            
+            subtask_number += 1
         
-        # Generate section-level synthesis
-        section_synthesis = await synthesize_section_analysis(
-            section_analysis, synthesis_strategy, nvidia_rotator, gemini_rotator
+        # Generate section-level synthesis with cross-references
+        section_synthesis = await synthesize_section_with_cot_references(
+            section_analysis, synthesis_strategy, agent_context, nvidia_rotator, gemini_rotator
         )
         section_analysis["section_synthesis"] = section_synthesis
         
+        # Update agent context with section-level insights
+        agent_context[f"section_{section_id}"] = {
+            "section_id": section_id,
+            "title": section_title,
+            "key_insights": extract_key_insights(section_synthesis),
+            "cross_references": extract_cross_references(section_synthesis)
+        }
+        
         detailed_analysis[section_title] = section_analysis
+        section_number += 1
     
-    logger.info(f"[REPORT] Completed detailed analysis for {len(detailed_analysis)} sections")
+    logger.info(f"[REPORT] Completed hierarchical analysis for {len(detailed_analysis)} sections with CoT references")
     return detailed_analysis
 
 
-async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_needed: List[str], depth: str,
-                                      sub_actions: List[str], expected_output: str, quality_checks: List[str],
-                                      context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> str:
-    """Analyze a specific subtask with comprehensive detail and sub-actions."""
+async def analyze_subtask_with_cot_references(subsection_id: str, task: str, reasoning: str, sources_needed: List[str], 
+                                             depth: str, sub_actions: List[str], expected_output: str, quality_checks: List[str],
+                                             context_text: str, web_context: str, filename: str, agent_context: Dict[str, Any],
+                                             nvidia_rotator, gemini_rotator) -> str:
+    """Analyze a specific subtask with comprehensive detail, CoT references, and hierarchical context."""
     
     # Select appropriate context based on sources_needed
     selected_context = ""
@@ -480,22 +519,31 @@ async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_neede
     elif "web" in sources_needed:
         selected_context = f"WEB CONTEXT:\n{web_context}"
     
-    # Enhanced depth instructions
+    # Build CoT references from previous agents
+    cot_references = build_cot_references(agent_context, subsection_id)
+    
+    # Enhanced depth instructions with hierarchical context
     depth_instructions = {
-        "surface": "Provide a brief, high-level analysis with key points",
-        "detailed": "Provide a thorough, well-reasoned analysis with specific examples, evidence, and clear explanations",
-        "comprehensive": "Provide an exhaustive, rigorous analysis with deep insights, multiple perspectives, and extensive evidence",
-        "exhaustive": "Provide the most comprehensive analysis possible with exhaustive detail, multiple angles, critical evaluation, and extensive supporting evidence"
+        "surface": "Provide a brief, high-level analysis with key points and references to previous work",
+        "detailed": "Provide a thorough, well-reasoned analysis with specific examples, evidence, clear explanations, and integration with previous findings",
+        "comprehensive": "Provide an exhaustive, rigorous analysis with deep insights, multiple perspectives, extensive evidence, and sophisticated integration with all previous work",
+        "exhaustive": "Provide the most comprehensive analysis possible with exhaustive detail, multiple angles, critical evaluation, extensive supporting evidence, and advanced synthesis with all previous findings"
     }
     
     sub_actions_text = "\n".join([f"- {action}" for action in sub_actions]) if sub_actions else "No specific sub-actions defined"
     quality_checks_text = "\n".join([f"- {check}" for check in quality_checks]) if quality_checks else "No specific quality checks defined"
     
-    sys_prompt = f"""You are an expert analyst performing comprehensive research. Your task is to {task}.
+    sys_prompt = f"""You are an expert analyst performing comprehensive research as part of a hierarchical report generation system. 
+
+SUBSECTION ID: {subsection_id}
+TASK: {task}
 
 REASONING: {reasoning}
 
 DEPTH REQUIREMENT: {depth_instructions.get(depth, "Provide detailed analysis")}
+
+CHAIN OF THOUGHT CONTEXT:
+{cot_references}
 
 SUB-ACTIONS TO PERFORM:
 {sub_actions_text}
@@ -505,24 +553,30 @@ EXPECTED OUTPUT: {expected_output}
 QUALITY CHECKS:
 {quality_checks_text}
 
-Focus on:
-- Extracting specific, relevant information with precision
-- Providing clear, detailed explanations and insights
-- Supporting all claims with concrete evidence from the materials
-- Maintaining the highest analytical rigor and objectivity
-- Being comprehensive and thorough while remaining focused
-- Following the sub-actions systematically
-- Meeting the expected output requirements
-- Passing all quality checks
+CRITICAL REQUIREMENTS:
+- Build upon and reference previous agents' work where relevant
+- Extract specific, relevant information with precision
+- Provide clear, detailed explanations and insights
+- Support all claims with concrete evidence from the materials
+- Maintain the highest analytical rigor and objectivity
+- Be comprehensive and thorough while remaining focused
+- Follow the sub-actions systematically
+- Meet the expected output requirements
+- Pass all quality checks
+- Integrate findings with previous work through CoT references
+- Create detailed, comprehensive content (not just summaries)
 
-Return only the analysis, no meta-commentary or introductory phrases."""
+Return only the comprehensive analysis, no meta-commentary or introductory phrases."""
 
-    user_prompt = f"""TASK: {task}
+    user_prompt = f"""SUBSECTION {subsection_id}: {task}
 
 MATERIALS:
 {selected_context}
 
-Perform the comprehensive analysis as specified, following all sub-actions and meeting quality standards."""
+CHAIN OF THOUGHT REFERENCES:
+{cot_references}
+
+Perform the comprehensive analysis as specified, following all sub-actions, meeting quality standards, and building upon previous work through CoT references."""
 
     try:
         selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
@@ -530,50 +584,75 @@ Perform the comprehensive analysis as specified, following all sub-actions and m
         return analysis.strip()
         
     except Exception as e:
-        logger.warning(f"[REPORT] Comprehensive subtask analysis failed for '{task}': {e}")
-        return f"Analysis for '{task}' could not be completed due to processing error."
+        logger.warning(f"[REPORT] Comprehensive subtask analysis with CoT failed for '{subsection_id}': {e}")
+        return f"Analysis for '{subsection_id}: {task}' could not be completed due to processing error."
 
 
-async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator, gemini_rotator) -> str:
-    """Synthesize all subtask results within a section into a coherent analysis."""
+async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_needed: List[str], depth: str,
+                                      sub_actions: List[str], expected_output: str, quality_checks: List[str],
+                                      context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> str:
+    """Legacy function for backward compatibility."""
+    return await analyze_subtask_with_cot_references(
+        "1.1", task, reasoning, sources_needed, depth, sub_actions, expected_output, 
+        quality_checks, context_text, web_context, filename, {}, nvidia_rotator, gemini_rotator
+    )
+
+
+async def synthesize_section_with_cot_references(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], 
+                                               agent_context: Dict[str, Any], nvidia_rotator, gemini_rotator) -> str:
+    """Synthesize all subtask results within a section with CoT references and hierarchical context."""
     
     section_title = section_analysis.get("title", "Unknown Section")
+    section_id = section_analysis.get("section_id", "1")
     section_purpose = section_analysis.get("purpose", "")
     subtask_results = section_analysis.get("subtask_results", [])
     
-    # Prepare subtask summaries
+    # Build comprehensive CoT context for synthesis
+    cot_context = build_synthesis_cot_context(agent_context, section_id)
+    
+    # Prepare detailed subtask summaries with hierarchical structure
     subtask_summaries = ""
-    for i, result in enumerate(subtask_results, 1):
+    for result in subtask_results:
+        subsection_id = result.get("subsection_id", "")
         task = result.get("task", "")
         analysis = result.get("analysis", "")
-        subtask_summaries += f"\n### Subtask {i}: {task}\n{analysis}\n"
+        subtask_summaries += f"\n### {subsection_id}: {task}\n{analysis}\n"
     
-    sys_prompt = f"""You are an expert synthesis analyst. Your task is to synthesize multiple detailed analyses into a coherent, comprehensive section.
+    sys_prompt = f"""You are an expert synthesis analyst creating comprehensive, hierarchical section synthesis.
 
-SECTION: {section_title}
+SECTION {section_id}: {section_title}
 PURPOSE: {section_purpose}
+
+CHAIN OF THOUGHT CONTEXT:
+{cot_context}
 
 SYNTHESIS STRATEGY:
 - Cross-referencing: {synthesis_strategy.get('cross_referencing', 'Connect related information across subtasks')}
 - Evidence integration: {synthesis_strategy.get('evidence_integration', 'Weave together different types of evidence')}
 - Argument development: {synthesis_strategy.get('argument_development', 'Build a compelling narrative flow')}
 
-Focus on:
-- Creating logical flow between subtask results
-- Identifying key themes and patterns
-- Highlighting important insights and findings
-- Ensuring comprehensive coverage of the section purpose
-- Maintaining analytical rigor and coherence
-- Building toward a strong section conclusion
+CRITICAL REQUIREMENTS:
+- Create logical flow between subtask results with hierarchical structure
+- Identify key themes and patterns across all subsections
+- Highlight important insights and findings with cross-references
+- Ensure comprehensive coverage of the section purpose
+- Maintain analytical rigor and coherence throughout
+- Build toward a strong section conclusion
+- Reference and build upon previous work through CoT
+- Create detailed, comprehensive content (not summaries)
+- Use proper hierarchical numbering and structure
 
-Return only the synthesized analysis, no meta-commentary."""
+Return only the synthesized analysis with proper hierarchical structure, no meta-commentary."""
 
-    user_prompt = f"""SECTION: {section_title}
+    user_prompt = f"""SECTION {section_id}: {section_title}
+
+CHAIN OF THOUGHT CONTEXT:
+{cot_context}
 
 DETAILED SUBTASK ANALYSES:
 {subtask_summaries}
 
-Synthesize these analyses into a comprehensive, coherent section that fulfills the section purpose."""
+Synthesize these analyses into a comprehensive, coherent section with proper hierarchical structure that fulfills the section purpose and builds upon previous work."""
 
     try:
         selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
@@ -581,34 +660,66 @@ Synthesize these analyses into a comprehensive, coherent section that fulfills t
         return synthesis.strip()
         
     except Exception as e:
-        logger.warning(f"[REPORT] Section synthesis failed for '{section_title}': {e}")
+        logger.warning(f"[REPORT] Section synthesis with CoT failed for '{section_title}': {e}")
         return f"Synthesis for '{section_title}' could not be completed due to processing error."
+
+
+async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator, gemini_rotator) -> str:
+    """Legacy function for backward compatibility."""
+    return await synthesize_section_with_cot_references(
+        section_analysis, synthesis_strategy, {}, nvidia_rotator, gemini_rotator
+    )
 
 
 async def synthesize_comprehensive_report(instructions: str, cot_plan: Dict[str, Any], 
                                         detailed_analysis: Dict[str, Any], filename: str, 
                                         report_words: int, gemini_rotator, nvidia_rotator) -> str:
-    """Synthesize the detailed analysis into a comprehensive, well-structured report."""
+    """Synthesize the detailed analysis into a comprehensive, hierarchical report with CoT integration."""
     
-    # Prepare comprehensive synthesis materials
+    # Prepare hierarchical synthesis materials with proper section numbering
     analysis_summary = ""
     synthesis_strategy = cot_plan.get("synthesis_strategy", {})
     
+    # Build comprehensive CoT context from all sections
+    all_agent_context = {}
     for section_title, section_data in detailed_analysis.items():
-        analysis_summary += f"\n## {section_title}\n"
+        section_id = section_data.get("section_id", "1")
+        all_agent_context[f"section_{section_id}"] = {
+            "section_id": section_id,
+            "title": section_title,
+            "key_insights": extract_key_insights(section_data.get("section_synthesis", "")),
+            "cross_references": extract_cross_references(section_data.get("section_synthesis", ""))
+        }
+    
+    # Create hierarchical structure with proper numbering
+    section_number = 1
+    for section_title, section_data in detailed_analysis.items():
+        section_id = section_data.get("section_id", str(section_number))
+        analysis_summary += f"\n## {section_number}. {section_title}\n"
         analysis_summary += f"Purpose: {section_data.get('purpose', '')}\n"
         analysis_summary += f"Priority: {section_data.get('priority', 'important')}\n\n"
         
-        # Include section synthesis if available
+        # Include section synthesis with hierarchical structure
         section_synthesis = section_data.get("section_synthesis", "")
         if section_synthesis:
-            analysis_summary += f"### Section Synthesis:\n{section_synthesis}\n\n"
+            analysis_summary += f"### Section {section_number} Synthesis:\n{section_synthesis}\n\n"
         
-        # Include detailed subtask results
+        # Include detailed subtask results with proper subsection numbering
+        subtask_number = 1
         for subtask_result in section_data.get("subtask_results", []):
-            analysis_summary += f"### {subtask_result.get('task', '')}\n"
+            subsection_id = subtask_result.get("subsection_id", f"{section_number}.{subtask_number}")
+            task = subtask_result.get("task", "")
+            analysis = subtask_result.get("analysis", "")
+            
+            analysis_summary += f"### {subsection_id} {task}\n"
             analysis_summary += f"Depth: {subtask_result.get('depth', 'detailed')}\n"
-            analysis_summary += f"Analysis: {subtask_result.get('analysis', '')}\n\n"
+            analysis_summary += f"Analysis: {analysis}\n\n"
+            subtask_number += 1
+        
+        section_number += 1
+    
+    # Build comprehensive CoT context for final synthesis
+    final_cot_context = build_final_synthesis_cot_context(all_agent_context)
     
     reasoning_flow = cot_plan.get("reasoning_flow", [])
     flow_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(reasoning_flow)])
@@ -619,16 +730,17 @@ async def synthesize_comprehensive_report(instructions: str, cot_plan: Dict[str,
     argument_development = synthesis_strategy.get("argument_development", "Build a compelling narrative")
     conclusion_synthesis = synthesis_strategy.get("conclusion_synthesis", "Create a powerful conclusion")
     
-    sys_prompt = f"""You are an expert report writer synthesizing detailed analysis into a comprehensive, professional report.
+    sys_prompt = f"""You are an expert report writer creating a comprehensive, hierarchical report with advanced Chain of Thought integration.
 
 Your task is to create a well-structured, authoritative report that:
 1. Follows the planned reasoning flow: {flow_text}
 2. Integrates all detailed analyses seamlessly with sophisticated synthesis
-3. Maintains logical flow and coherence throughout
+3. Maintains logical flow and coherence throughout with proper hierarchical structure
 4. Provides clear, actionable insights and recommendations
-5. Uses proper academic/professional formatting and structure
+5. Uses proper academic/professional formatting with section/subsection numbering
 6. Targets approximately {report_words} words with comprehensive coverage
 7. Demonstrates analytical rigor and depth
+8. Integrates Chain of Thought references throughout
 
 SYNTHESIS REQUIREMENTS:
 - Cross-referencing: {cross_referencing}
@@ -636,20 +748,26 @@ SYNTHESIS REQUIREMENTS:
 - Argument development: {argument_development}
 - Conclusion synthesis: {conclusion_synthesis}
 
-STRUCTURE REQUIREMENTS:
+HIERARCHICAL STRUCTURE REQUIREMENTS:
+- Proper section numbering (1, 2, 3, etc.)
+- Proper subsection numbering (1.1, 1.2, 2.1, 2.2, etc.)
 - Executive summary with key findings
 - Clear section headings with logical progression
-- Smooth transitions between sections
+- Smooth transitions between sections with cross-references
 - Proper citations and references throughout
 - Data-driven insights and evidence-based conclusions
 - Actionable recommendations where appropriate
 - Professional, analytical tone
+- Chain of Thought integration showing how sections build upon each other
 
 CRITICAL: Start the report immediately with substantive content. Do NOT include meta-commentary like "Here is a comprehensive report..." or "Of course, here is...". Begin directly with the report title and content."""
 
     user_prompt = f"""USER REQUEST: {instructions}
 
-COMPREHENSIVE ANALYSIS TO SYNTHESIZE:
+CHAIN OF THOUGHT CONTEXT:
+{final_cot_context}
+
+COMPREHENSIVE HIERARCHICAL ANALYSIS TO SYNTHESIZE:
 {analysis_summary}
 
 REASONING FLOW TO FOLLOW:
@@ -661,26 +779,232 @@ SYNTHESIS STRATEGY:
 - Argument development: {argument_development}
 - Conclusion synthesis: {conclusion_synthesis}
 
-Create a comprehensive, authoritative report that addresses the user's request by synthesizing all the detailed analysis above. Begin immediately with the report title and substantive content."""
+Create a comprehensive, authoritative report with proper hierarchical structure that addresses the user's request by synthesizing all the detailed analysis above. Use proper section/subsection numbering and integrate Chain of Thought references throughout. Begin immediately with the report title and substantive content."""
 
     try:
         # Use Gemini Pro for final synthesis (better for long-form content)
         selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
         report = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
         
-        # Post-process to remove any remaining meta-commentary
+        # Post-process to remove any remaining meta-commentary and ensure proper formatting
         report = remove_meta_commentary(report)
+        report = ensure_hierarchical_structure(report)
         
-        logger.info(f"[REPORT] Comprehensive report synthesized, length: {len(report)} characters")
+        logger.info(f"[REPORT] Comprehensive hierarchical report synthesized, length: {len(report)} characters")
         return report
         
     except Exception as e:
         logger.error(f"[REPORT] Report synthesis failed: {e}")
-        # Fallback: simple concatenation
+        # Fallback: simple concatenation with hierarchical structure
         fallback_report = f"# {instructions}\n\n"
         fallback_report += analysis_summary
         fallback_report += f"\n\n## Conclusion\n\n{instructions}"
         return fallback_report
+
+
+def build_cot_references(agent_context: Dict[str, Any], current_subsection_id: str) -> str:
+    """Build Chain of Thought references from previous agents' work."""
+    if not agent_context:
+        return "No previous agent context available."
+    
+    references = []
+    for key, context in agent_context.items():
+        if key.startswith("section_"):
+            section_id = context.get("section_id", "")
+            title = context.get("title", "")
+            key_insights = context.get("key_insights", [])
+            cross_refs = context.get("cross_references", [])
+            
+            if key_insights or cross_refs:
+                ref_text = f"Section {section_id} ({title}):"
+                if key_insights:
+                    ref_text += f"\n  Key Insights: {', '.join(key_insights[:3])}"
+                if cross_refs:
+                    ref_text += f"\n  Cross-references: {', '.join(cross_refs[:2])}"
+                references.append(ref_text)
+        else:
+            # Individual subsection context
+            subsection_id = context.get("subsection_id", "")
+            task = context.get("task", "")
+            key_findings = context.get("key_findings", [])
+            evidence = context.get("evidence", [])
+            
+            if key_findings or evidence:
+                ref_text = f"{subsection_id} ({task}):"
+                if key_findings:
+                    ref_text += f"\n  Key Findings: {', '.join(key_findings[:2])}"
+                if evidence:
+                    ref_text += f"\n  Evidence: {', '.join(evidence[:2])}"
+                references.append(ref_text)
+    
+    if references:
+        return "PREVIOUS AGENT WORK TO BUILD UPON:\n" + "\n".join(references)
+    else:
+        return "No relevant previous agent work to reference."
+
+
+def build_synthesis_cot_context(agent_context: Dict[str, Any], current_section_id: str) -> str:
+    """Build comprehensive CoT context for section synthesis."""
+    if not agent_context:
+        return "No previous context available for synthesis."
+    
+    context_parts = []
+    
+    # Include previous section insights
+    for key, context in agent_context.items():
+        if key.startswith("section_"):
+            section_id = context.get("section_id", "")
+            if section_id != current_section_id:  # Don't include current section
+                title = context.get("title", "")
+                key_insights = context.get("key_insights", [])
+                cross_refs = context.get("cross_references", [])
+                
+                if key_insights or cross_refs:
+                    context_parts.append(f"Section {section_id} ({title}): {', '.join(key_insights[:3])}")
+    
+    # Include subsection context within current section
+    current_subsections = []
+    for key, context in agent_context.items():
+        if not key.startswith("section_") and context.get("subsection_id", "").startswith(current_section_id):
+            subsection_id = context.get("subsection_id", "")
+            task = context.get("task", "")
+            key_findings = context.get("key_findings", [])
+            current_subsections.append(f"{subsection_id} ({task}): {', '.join(key_findings[:2])}")
+    
+    if current_subsections:
+        context_parts.append(f"Current Section Subsections: {'; '.join(current_subsections)}")
+    
+    if context_parts:
+        return "SYNTHESIS CONTEXT:\n" + "\n".join(context_parts)
+    else:
+        return "No relevant context available for synthesis."
+
+
+def extract_key_findings(analysis_text: str) -> List[str]:
+    """Extract key findings from analysis text."""
+    # Simple extraction - could be enhanced with NLP
+    sentences = analysis_text.split('.')
+    findings = []
+    for sentence in sentences[:5]:  # First 5 sentences
+        sentence = sentence.strip()
+        if len(sentence) > 20 and any(word in sentence.lower() for word in ['find', 'reveal', 'show', 'indicate', 'demonstrate', 'suggest']):
+            findings.append(sentence[:100] + "..." if len(sentence) > 100 else sentence)
+    return findings[:3]
+
+
+def extract_evidence(analysis_text: str) -> List[str]:
+    """Extract evidence from analysis text."""
+    sentences = analysis_text.split('.')
+    evidence = []
+    for sentence in sentences[:5]:
+        sentence = sentence.strip()
+        if len(sentence) > 20 and any(word in sentence.lower() for word in ['data', 'evidence', 'research', 'study', 'analysis', 'results']):
+            evidence.append(sentence[:100] + "..." if len(sentence) > 100 else sentence)
+    return evidence[:3]
+
+
+def extract_conclusions(analysis_text: str) -> List[str]:
+    """Extract conclusions from analysis text."""
+    sentences = analysis_text.split('.')
+    conclusions = []
+    for sentence in sentences[-3:]:  # Last 3 sentences
+        sentence = sentence.strip()
+        if len(sentence) > 20 and any(word in sentence.lower() for word in ['conclude', 'therefore', 'thus', 'consequently', 'indicates', 'suggests']):
+            conclusions.append(sentence[:100] + "..." if len(sentence) > 100 else sentence)
+    return conclusions[:2]
+
+
+def extract_key_insights(synthesis_text: str) -> List[str]:
+    """Extract key insights from section synthesis."""
+    sentences = synthesis_text.split('.')
+    insights = []
+    for sentence in sentences[:5]:
+        sentence = sentence.strip()
+        if len(sentence) > 30:
+            insights.append(sentence[:80] + "..." if len(sentence) > 80 else sentence)
+    return insights[:3]
+
+
+def extract_cross_references(synthesis_text: str) -> List[str]:
+    """Extract cross-references from section synthesis."""
+    sentences = synthesis_text.split('.')
+    references = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if any(word in sentence.lower() for word in ['section', 'subsection', 'previous', 'earlier', 'above', 'below']):
+            references.append(sentence[:60] + "..." if len(sentence) > 60 else sentence)
+    return references[:2]
+
+
+def build_final_synthesis_cot_context(all_agent_context: Dict[str, Any]) -> str:
+    """Build comprehensive CoT context for final report synthesis."""
+    if not all_agent_context:
+        return "No previous context available for final synthesis."
+    
+    context_parts = []
+    for key, context in all_agent_context.items():
+        section_id = context.get("section_id", "")
+        title = context.get("title", "")
+        key_insights = context.get("key_insights", [])
+        cross_refs = context.get("cross_references", [])
+        
+        if key_insights or cross_refs:
+            context_parts.append(f"Section {section_id} ({title}): {', '.join(key_insights[:3])}")
+    
+    if context_parts:
+        return "FINAL SYNTHESIS CONTEXT:\n" + "\n".join(context_parts)
+    else:
+        return "No relevant context available for final synthesis."
+
+
+def ensure_hierarchical_structure(text: str) -> str:
+    """Ensure the report has proper hierarchical structure with section/subsection numbering."""
+    lines = text.split('\n')
+    processed_lines = []
+    section_counter = 1
+    subsection_counter = 1
+    current_section = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            processed_lines.append(line)
+            continue
+            
+        # Check for main sections (## or #)
+        if line.startswith('## ') or line.startswith('# '):
+            # Reset subsection counter for new section
+            subsection_counter = 1
+            current_section = section_counter
+            
+            # Ensure proper section numbering
+            if not line.startswith(f'# {section_counter}.') and not line.startswith(f'## {section_counter}.'):
+                # Add section number if missing
+                if line.startswith('# '):
+                    line = f'# {section_counter}. {line[2:]}'
+                elif line.startswith('## '):
+                    line = f'## {section_counter}. {line[3:]}'
+            
+            processed_lines.append(line)
+            section_counter += 1
+            
+        # Check for subsections (###)
+        elif line.startswith('### '):
+            if current_section is not None:
+                # Ensure proper subsection numbering
+                if not line.startswith(f'### {current_section}.{subsection_counter}'):
+                    line = f'### {current_section}.{subsection_counter} {line[4:]}'
+                subsection_counter += 1
+            else:
+                # If no main section yet, treat as section
+                line = f'## {section_counter}. {line[4:]}'
+                section_counter += 1
+            
+            processed_lines.append(line)
+        else:
+            processed_lines.append(line)
+    
+    return '\n'.join(processed_lines)
 
 
 def remove_meta_commentary(text: str) -> str:

@@ -350,28 +350,38 @@ async def chat(
                 rag.db["chat_sessions"].insert_one(session_data)
                 logger.info(f"[CHAT] Created session record for {session_id}")
             
-            # If this is the first user message, trigger auto-naming (non-blocking)
+            # If this is the first user message, trigger auto-naming with short timeout, then fall back to background
             if existing_messages == 0:
                 try:
                     from helpers.namer import auto_name_session_immediate
                     import asyncio as _asyncio_name
-                    async def _do_name():
-                        try:
-                            _name = await auto_name_session_immediate(
+                    try:
+                        session_name = await _asyncio_name.wait_for(
+                            auto_name_session_immediate(
                                 user_id, project_id, session_id, question, nvidia_rotator, rag.db
-                            )
-                            if _name:
-                                logger.info(f"[CHAT] Auto-named session {session_id} to '{_name}'")
-                        except Exception as _e:
-                            logger.warning(f"[CHAT] Auto-naming failed: {_e}")
-                    _asyncio_name.create_task(_do_name())
+                            ),
+                            timeout=2.0
+                        )
+                        if session_name:
+                            logger.info(f"[CHAT] Auto-named session {session_id} to '{session_name}' (inline)")
+                    except _asyncio_name.TimeoutError:
+                        async def _do_name():
+                            try:
+                                _name = await auto_name_session_immediate(
+                                    user_id, project_id, session_id, question, nvidia_rotator, rag.db
+                                )
+                                if _name:
+                                    logger.info(f"[CHAT] Auto-named session {session_id} to '{_name}' (background)")
+                            except Exception as _e:
+                                logger.warning(f"[CHAT] Auto-naming failed: {_e}")
+                        _asyncio_name.create_task(_do_name())
                 except Exception as e:
                     logger.warning(f"[CHAT] Auto-naming scheduling failed: {e}")
         
         # Get the chat response
         chat_response = await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
         
-        # Add session information to the response if auto-naming occurred
+        # Add session information to the response if auto-naming occurred (inline)
         if session_name:
             chat_response.session_name = session_name
             chat_response.session_id = session_id

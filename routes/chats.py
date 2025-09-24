@@ -318,27 +318,38 @@ async def chat(
         # Check if this is the first message in the session for auto-naming
         session_name = None
         if session_id:
+            # Check if session record exists (not just messages)
+            existing_session = rag.db["chat_sessions"].find_one({
+                "user_id": user_id, 
+                "project_id": project_id, 
+                "session_id": session_id,
+                "role": {"$exists": False}  # Session record, not message
+            })
+            
+            # Check if this is the first user message
             existing_messages = rag.db["chat_sessions"].count_documents({
                 "user_id": user_id, 
                 "project_id": project_id, 
-                "session_id": session_id
+                "session_id": session_id,
+                "role": "user"  # Only count user messages
             })
             
-            # If this is the first user message, create session and trigger immediate auto-naming
-            if existing_messages == 0:
-                # Create session record first
+            # If session doesn't exist, create it
+            if not existing_session:
                 session_data = {
                     "user_id": user_id,
                     "project_id": project_id,
                     "session_id": session_id,
                     "session_name": "New Chat",
-                    "is_auto_named": False,  # Will be updated by auto-naming
+                    "is_auto_named": True,
                     "created_at": datetime.now(timezone.utc),
                     "timestamp": time.time()
                 }
                 rag.db["chat_sessions"].insert_one(session_data)
-                
-                # Trigger immediate auto-naming
+                logger.info(f"[CHAT] Created session record for {session_id}")
+            
+            # If this is the first user message, trigger auto-naming
+            if existing_messages == 0:
                 try:
                     from helpers.namer import auto_name_session_immediate
                     session_name = await auto_name_session_immediate(

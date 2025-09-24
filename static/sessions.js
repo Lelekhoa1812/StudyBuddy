@@ -71,16 +71,23 @@
         // Auto-select first session if none selected
         if (sessions.length > 0 && !currentSessionId) {
           selectSession(sessions[0].session_id);
+        } else if (sessions.length === 0) {
+          // If no sessions exist, create a default one
+          await createDefaultSession();
         }
       } else {
         console.error('Failed to load sessions');
         sessions = [];
         updateSessionDropdown();
+        // Try to create a default session even if loading failed
+        await createDefaultSession();
       }
     } catch (error) {
       console.error('Error loading sessions:', error);
       sessions = [];
       updateSessionDropdown();
+      // Try to create a default session even if loading failed
+      await createDefaultSession();
     }
   }
   
@@ -137,6 +144,39 @@
     loadChatHistory();
   }
   
+  async function createDefaultSession() {
+    const user = window.__sb_get_user();
+    const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+    
+    if (!user || !currentProject) {
+      return;
+    }
+    
+    try {
+      const formData = new FormData();
+      formData.append('user_id', user.user_id);
+      formData.append('project_id', currentProject.project_id);
+      formData.append('session_name', 'New Chat');
+      
+      const response = await fetch('/sessions/create', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const session = await response.json();
+        sessions.unshift(session); // Add to beginning
+        updateSessionDropdown();
+        selectSession(session.session_id);
+        console.log('Created default session:', session.session_id);
+      } else {
+        console.error('Failed to create default session');
+      }
+    } catch (error) {
+      console.error('Failed to create default session:', error);
+    }
+  }
+
   async function createNewSession() {
     const user = window.__sb_get_user();
     const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();

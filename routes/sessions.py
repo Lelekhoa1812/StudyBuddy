@@ -12,30 +12,73 @@ from helpers.models import MessageResponse
 async def list_sessions(user_id: str, project_id: str):
     """Get all sessions for a project"""
     try:
+        # First, get all session records (including those without messages)
         sessions_cursor = rag.db["chat_sessions"].find(
-            {"user_id": user_id, "project_id": project_id}
+            {"user_id": user_id, "project_id": project_id, "role": {"$exists": False}}  # Session records don't have role
         ).sort("created_at", -1)
         
         # Group by session_id to get unique sessions
         sessions_map = {}
-        for message in sessions_cursor:
-            session_id = message.get("session_id")
+        
+        # Process session records first
+        for session_record in sessions_cursor:
+            session_id = session_record.get("session_id")
             if session_id and session_id not in sessions_map:
                 sessions_map[session_id] = {
                     "session_id": session_id,
-                    "name": message.get("session_name", "New Chat"),
-                    "is_auto_named": message.get("is_auto_named", True),
-                    "created_at": message.get("created_at"),
-                    "last_activity": message.get("timestamp", 0),
+                    "name": session_record.get("session_name", "New Chat"),
+                    "is_auto_named": session_record.get("is_auto_named", True),
+                    "created_at": session_record.get("created_at"),
+                    "last_activity": session_record.get("timestamp", 0),
                     "message_count": 0
                 }
-            if session_id in sessions_map:
+        
+        # Now count messages for each session
+        messages_cursor = rag.db["chat_sessions"].find(
+            {"user_id": user_id, "project_id": project_id, "role": {"$exists": True}}  # Messages have role
+        ).sort("timestamp", -1)
+        
+        for message in messages_cursor:
+            session_id = message.get("session_id")
+            if session_id and session_id in sessions_map:
                 sessions_map[session_id]["message_count"] += 1
                 # Update last activity to most recent message
                 if message.get("timestamp", 0) > sessions_map[session_id]["last_activity"]:
                     sessions_map[session_id]["last_activity"] = message.get("timestamp", 0)
         
         sessions = list(sessions_map.values())
+        
+        # If no sessions exist, create a default one
+        if not sessions:
+            try:
+                session_id = str(uuid.uuid4())
+                current_time = time.time()
+                
+                session_data = {
+                    "user_id": user_id,
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "session_name": "New Chat",
+                    "is_auto_named": True,
+                    "created_at": datetime.now(timezone.utc),
+                    "timestamp": current_time
+                }
+                
+                rag.db["chat_sessions"].insert_one(session_data)
+                
+                sessions = [{
+                    "session_id": session_id,
+                    "name": "New Chat",
+                    "is_auto_named": True,
+                    "created_at": session_data["created_at"].isoformat(),
+                    "last_activity": current_time,
+                    "message_count": 0
+                }]
+                
+                logger.info(f"[SESSIONS] Created default session {session_id} for user {user_id}, project {project_id}")
+            except Exception as e:
+                logger.warning(f"[SESSIONS] Failed to create default session: {e}")
+        
         return {"sessions": sessions}
         
     except Exception as e:

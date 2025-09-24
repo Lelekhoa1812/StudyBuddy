@@ -10,7 +10,7 @@ from .search import build_web_context
 from helpers.models import ReportResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
-from helpers.coder import generate_code_artifacts
+from helpers.coder import generate_code_artifacts, extract_structured_code
 from helpers.diagram import should_generate_mermaid, generate_mermaid_diagram
 
 
@@ -477,6 +477,12 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
                     )
                     # Append code and explanation beneath the analysis
                     subtask_result = subtask_result + "\n\n" + code_markdown
+                    # Parse structured code for indexing and downstream usage
+                    try:
+                        code_blocks = extract_structured_code(code_markdown)
+                    except Exception as pe:
+                        logger.warning(f"[REPORT] Failed to parse structured code for {subsection_id}: {pe}")
+                        code_blocks = []
                 except Exception as ce:
                     logger.warning(f"[REPORT] Code generation failed for {subsection_id}: {ce}")
             
@@ -498,6 +504,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
                 "expected_output": expected_output,
                 "quality_checks": quality_checks,
                 "analysis": subtask_result,
+                **({"code_blocks": code_blocks} if 'code_blocks' in locals() else {}),
                 "agent_context": agent_context.copy()
             })
             

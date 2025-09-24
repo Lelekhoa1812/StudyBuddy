@@ -67,3 +67,64 @@ async def generate_code_artifacts(
     return code_md
 
 
+def extract_structured_code(markdown: str):
+    """Extract structured code blocks from the Gemini output.
+
+    Expects sections like:
+    'File: path/to/file.py' followed by a fenced code block and then an explanation paragraph.
+
+    Returns list of {path, language, code, explanation}.
+    """
+    import re
+    blocks = []
+    if not markdown:
+        return blocks
+
+    # Split on 'File:' headings to locate file sections
+    parts = re.split(r"\n(?=File:\s*)", markdown)
+    for part in parts:
+        part = part.strip()
+        if not part.lower().startswith("file:"):
+            # The first chunk may be prelude; skip if no code block
+            continue
+        # Extract path
+        m_path = re.match(r"File:\s*(.+)", part)
+        file_path = m_path.group(1).strip() if m_path else "unknown"
+
+        # Extract fenced code block with optional language
+        m_code = re.search(r"```([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n```", part)
+        language = (m_code.group(1) or '').strip() if m_code else ''
+        code = m_code.group(2) if m_code else ''
+
+        # Remove the matched code from part to find explanation remainder
+        explanation = ''
+        if m_code:
+            start, end = m_code.span()
+            # Text after code block is considered explanation
+            explanation = part[end:].strip()
+
+        blocks.append({
+            "path": file_path,
+            "language": language or detect_language_from_path(file_path),
+            "code": code.strip(),
+            "explanation": explanation
+        })
+    return blocks
+
+
+def detect_language_from_path(path: str) -> str:
+    ext = (path.split('.')[-1].lower() if '.' in path else '')
+    return {
+        'py': 'python',
+        'js': 'javascript',
+        'ts': 'typescript',
+        'json': 'json',
+        'md': 'markdown',
+        'html': 'html',
+        'css': 'css',
+        'sh': 'bash',
+        'yml': 'yaml',
+        'yaml': 'yaml'
+    }.get(ext, '')
+
+

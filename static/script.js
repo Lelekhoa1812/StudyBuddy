@@ -743,6 +743,8 @@
       // Configure marked to keep code blocks for highlight.js
       const htmlContent = marked.parse(markdown);
       container.innerHTML = htmlContent;
+      // Normalize heading numbering (H1/H2/H3) without double-numbering
+      try { renumberHeadings(container); } catch {}
       // Render Mermaid if present
       renderMermaidInElement(container);
       // Add copy buttons to code blocks
@@ -760,6 +762,34 @@
     } catch (e) {
       container.textContent = markdown;
     }
+  }
+
+  function renumberHeadings(root) {
+    const h1s = Array.from(root.querySelectorAll('h1'));
+    const h2s = Array.from(root.querySelectorAll('h2'));
+    const h3s = Array.from(root.querySelectorAll('h3'));
+    let s1 = 0;
+    let s2 = 0;
+    let s3 = 0;
+    const headers = Array.from(root.querySelectorAll('h1, h2, h3'));
+    headers.forEach(h => {
+      const text = h.textContent.trim();
+      // Strip any existing numeric prefix like "1. ", "1.2 ", "1.2.3 "
+      const stripped = text.replace(/^\d+(?:\.\d+){0,2}\s+/, '');
+      if (h.tagName === 'H1') {
+        s1 += 1; s2 = 0; s3 = 0;
+        h.textContent = `${s1}. ${stripped}`;
+      } else if (h.tagName === 'H2') {
+        if (s1 === 0) { s1 = 1; }
+        s2 += 1; s3 = 0;
+        h.textContent = `${s1}.${s2} ${stripped}`;
+      } else if (h.tagName === 'H3') {
+        if (s1 === 0) { s1 = 1; }
+        if (s2 === 0) { s2 = 1; }
+        s3 += 1;
+        h.textContent = `${s1}.${s2}.${s3} ${stripped}`;
+      }
+    });
   }
 
   // Dynamically load Mermaid and render mermaid code blocks
@@ -826,12 +856,23 @@
     const codeBlocks = messageDiv.querySelectorAll('pre code');
     codeBlocks.forEach((codeBlock, index) => {
       const pre = codeBlock.parentElement;
+      if (!pre || pre.dataset.sbWrapped === '1') return;
+      const isMermaid = codeBlock.classList.contains('language-mermaid');
+      // Do not wrap mermaid blocks; they will be replaced by SVGs
+      if (isMermaid) return;
       const language = codeBlock.className.match(/language-(\w+)/)?.[1] || 'code';
-      
+
+      // Ensure syntax highlighting is applied before moving the node
+      try {
+        if (window.hljs && window.hljs.highlightElement) {
+          window.hljs.highlightElement(codeBlock);
+        }
+      } catch {}
+
       // Create wrapper
       const wrapper = document.createElement('div');
       wrapper.className = 'code-block-wrapper';
-      
+
       // Create header with language and copy button
       const header = document.createElement('div');
       header.className = 'code-block-header';
@@ -845,19 +886,36 @@
           Copy
         </button>
       `;
-      
-      // Create content wrapper
+
+      // Create content wrapper and move the original <pre><code> inside (preserves highlighting)
       const content = document.createElement('div');
       content.className = 'code-block-content';
-      content.appendChild(codeBlock.cloneNode(true));
-      
+      pre.dataset.sbWrapped = '1';
+      content.appendChild(pre);
+
       // Assemble wrapper
       wrapper.appendChild(header);
       wrapper.appendChild(content);
-      
-      // Replace original pre with wrapper
-      pre.parentNode.replaceChild(wrapper, pre);
-      
+
+      // Insert wrapper where the original pre was
+      const parent = content.parentNode || messageDiv; // safety
+      if (pre.parentNode !== content) {
+        // pre has been moved into content; parent should be original parent of pre
+        const insertionParent = parent === messageDiv ? messageDiv : pre.parentNode;
+      }
+      // Replace in DOM: pre has been moved; place wrapper where pre used to be
+      const originalParent = content.parentNode ? content.parentNode : messageDiv;
+      // If pre had a previous sibling, insert wrapper before it; else append
+      const ref = wrapper.querySelector('.code-block-content pre');
+      const oldParent = wrapper.querySelector('.code-block-content pre').parentNode;
+      // oldParent is content; we need to place wrapper at the original location of pre
+      const originalPlaceholder = document.createComment('code-block-wrapper');
+      const preOriginalParent = wrapper.querySelector('.code-block-content pre').parentElement; // content
+      // Since we already moved pre, we can't auto-place; use previousSibling stored before move
+      // Simpler: insert wrapper after content creation at the position of 'content' parent
+      // If messageDiv contains multiple elements, just append wrapper now
+      messageDiv.appendChild(wrapper);
+
       // Add click handler for copy button
       const copyBtn = wrapper.querySelector('.copy-code-btn');
       copyBtn.addEventListener('click', () => copyCodeToClipboard(codeBlock.textContent, copyBtn));

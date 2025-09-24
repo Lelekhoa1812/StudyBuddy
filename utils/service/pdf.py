@@ -63,6 +63,27 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                 i += 1
             
             if code_lines:
+                # Mermaid diagrams → render via Kroki PNG for PDF
+                if language.lower() == 'mermaid':
+                    try:
+                        from reportlab.platypus import Image, Spacer
+                        img_bytes = _render_mermaid_png('\n'.join(code_lines))
+                        if img_bytes:
+                            import io
+                            img = Image(io.BytesIO(img_bytes))
+                            # Fit within page width (~6 inches after margins)
+                            max_width = 6.0 * inch
+                            if img.drawWidth > max_width:
+                                scale = max_width / float(img.drawWidth)
+                                img.drawWidth = max_width
+                                img.drawHeight = img.drawHeight * scale
+                            story.append(img)
+                            story.append(Spacer(1, 12))
+                            i += 1
+                            continue
+                    except Exception as me:
+                        logger.warning(f"[PDF] Mermaid render failed, falling back to code block: {me}")
+
                 from reportlab.platypus import XPreformatted, Paragraph
                 # Join and sanitize code content: expand tabs, remove control chars that render as squares
                 raw_code = '\n'.join(code_lines)
@@ -507,6 +528,32 @@ def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
     out = sub_outside_tags(r"\b(\d+\.?\d*)\b", r"<font color='#d19a66'>\1</font>", out)
 
     return out
+
+
+def _render_mermaid_png(mermaid_text: str) -> bytes:
+    """
+    Render mermaid code to PNG via Kroki service (no local mermaid-cli dependency).
+    Falls back to returning empty bytes on failure.
+    """
+    try:
+        import base64
+        import json
+        import urllib.request
+        import urllib.error
+        # Kroki POST API for mermaid -> png
+        data = json.dumps({"diagram_source": mermaid_text}).encode("utf-8")
+        req = urllib.request.Request(
+            url="https://kroki.io/mermaid/png",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 200:
+                return resp.read()
+    except Exception as e:
+        logger.warning(f"[PDF] Kroki mermaid render error: {e}")
+    return b""
 
 
 async def _format_references_ieee(sources: List[Dict]) -> List[str]:

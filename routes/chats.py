@@ -64,6 +64,10 @@ async def get_chat_history(user_id: str, project_id: str, session_id: str = None
     
     messages = []
     for message in messages_cursor:
+        # Skip messages that don't have required fields
+        if not all(key in message for key in ["user_id", "project_id", "role", "content", "timestamp"]):
+            continue
+            
         messages.append(ChatMessageResponse(
             user_id=message["user_id"],
             project_id=message["project_id"],

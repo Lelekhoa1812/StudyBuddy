@@ -33,12 +33,15 @@ class MemorySystem:
         self.enhanced_available = False
         self.enhanced_memory = None
         self.embedder = None
+        self.session_memory = None
         
         try:
             self.embedder = EmbeddingClient()
             self.enhanced_memory = PersistentMemory(self.mongo_uri, self.db_name, self.embedder)
+            from memo.session import get_session_memory_manager
+            self.session_memory = get_session_memory_manager(self.mongo_uri, self.db_name)
             self.enhanced_available = True
-            logger.info("[CORE_MEMORY] Enhanced memory system initialized")
+            logger.info("[CORE_MEMORY] Enhanced memory system and session memory initialized")
         except Exception as e:
             logger.warning(f"[CORE_MEMORY] Enhanced memory system unavailable: {e}")
             self.enhanced_available = False
@@ -399,6 +402,82 @@ class MemorySystem:
         except Exception as e:
             logger.error(f"[CORE_MEMORY] Failed to get enhancement context: {e}")
             return "", "", {"error": str(e)}
+    
+    # ────────────────────────────── Session-Specific Memory Operations ──────────────────────────────
+    
+    def add_session_memory(self, user_id: str, project_id: str, session_id: str, 
+                          question: str, answer: str, context: Dict[str, Any] = None) -> str:
+        """Add memory to a specific session"""
+        try:
+            if not self.session_memory:
+                logger.warning("[CORE_MEMORY] Session memory not available")
+                return ""
+            
+            # Create session-specific memory content
+            content = f"Q: {question}\nA: {answer}"
+            
+            memory_id = self.session_memory.add_session_memory(
+                user_id=user_id,
+                project_id=project_id,
+                session_id=session_id,
+                content=content,
+                memory_type="conversation",
+                importance="medium",
+                tags=["conversation", "qa"],
+                metadata=context or {}
+            )
+            
+            logger.debug(f"[CORE_MEMORY] Added session memory for session {session_id}")
+            return memory_id
+            
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to add session memory: {e}")
+            return ""
+    
+    def get_session_memory_context(self, user_id: str, project_id: str, session_id: str,
+                                  question: str, limit: int = 5) -> Tuple[str, str]:
+        """Get memory context for a specific session"""
+        try:
+            if not self.session_memory:
+                return "", ""
+            
+            # Get recent session memories
+            recent_memories = self.session_memory.get_session_memories(
+                user_id, project_id, session_id, memory_type="conversation", limit=limit
+            )
+            
+            recent_context = ""
+            if recent_memories:
+                recent_context = "\n\n".join([mem["content"] for mem in recent_memories])
+            
+            # Get semantic context from session memories
+            semantic_memories = self.session_memory.search_session_memories(
+                user_id, project_id, session_id, question, self.embedder, limit=3
+            )
+            
+            semantic_context = ""
+            if semantic_memories:
+                semantic_context = "\n\n".join([mem["content"] for mem, score in semantic_memories])
+            
+            return recent_context, semantic_context
+            
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to get session memory context: {e}")
+            return "", ""
+    
+    def clear_session_memories(self, user_id: str, project_id: str, session_id: str):
+        """Clear all memories for a specific session"""
+        try:
+            if not self.session_memory:
+                return 0
+            
+            deleted_count = self.session_memory.clear_session_memories(user_id, project_id, session_id)
+            logger.info(f"[CORE_MEMORY] Cleared {deleted_count} session memories for session {session_id}")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"[CORE_MEMORY] Failed to clear session memories: {e}")
+            return 0
     
     # ────────────────────────────── Private Helper Methods ──────────────────────────────
     

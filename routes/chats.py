@@ -20,7 +20,8 @@ async def save_chat_message(
     content: str = Form(...),
     timestamp: Optional[float] = Form(None),
     sources: Optional[str] = Form(None),
-    is_report: Optional[int] = Form(0)
+    is_report: Optional[int] = Form(0),
+    session_id: Optional[str] = Form(None)
 ):
     """Save a chat message to the session"""
     if role not in ["user", "assistant"]:
@@ -44,7 +45,8 @@ async def save_chat_message(
         "timestamp": timestamp or time.time(),
         "created_at": datetime.now(timezone.utc),
         **({"sources": parsed_sources} if parsed_sources is not None else {}),
-        "is_report": bool(is_report or 0)
+        "is_report": bool(is_report or 0),
+        **({"session_id": session_id} if session_id else {})
     }
     
     rag.db["chat_sessions"].insert_one(message)
@@ -52,11 +54,13 @@ async def save_chat_message(
 
 
 @app.get("/chat/history", response_model=ChatHistoryResponse)
-async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
-    """Get chat history for a project"""
-    messages_cursor = rag.db["chat_sessions"].find(
-        {"user_id": user_id, "project_id": project_id}
-    ).sort("timestamp", 1).limit(limit)
+async def get_chat_history(user_id: str, project_id: str, session_id: str = None, limit: int = 100):
+    """Get chat history for a project or specific session"""
+    query = {"user_id": user_id, "project_id": project_id}
+    if session_id:
+        query["session_id"] = session_id
+    
+    messages_cursor = rag.db["chat_sessions"].find(query).sort("timestamp", 1).limit(limit)
     
     messages = []
     for message in messages_cursor:
@@ -75,44 +79,64 @@ async def get_chat_history(user_id: str, project_id: str, limit: int = 100):
 
 
 @app.delete("/chat/history", response_model=MessageResponse)
-async def delete_chat_history(user_id: str, project_id: str):
+async def delete_chat_history(user_id: str, project_id: str, session_id: str = None):
     try:
+        # Build query for deletion
+        query = {"user_id": user_id, "project_id": project_id}
+        if session_id:
+            query["session_id"] = session_id
+        
         # Clear chat sessions from database
-        chat_result = rag.db["chat_sessions"].delete_many({"user_id": user_id, "project_id": project_id})
-        logger.info(f"[CHAT] Cleared {chat_result.deleted_count} chat sessions for user {user_id} project {project_id}")
+        chat_result = rag.db["chat_sessions"].delete_many(query)
         
-        # Clear all memory components using the new comprehensive clear method
-        try:
-            from memo.core import get_memory_system
-            memory = get_memory_system()
-            clear_results = memory.clear_all_memory(user_id, project_id)
+        if session_id:
+            logger.info(f"[CHAT] Cleared {chat_result.deleted_count} chat sessions for user {user_id} project {project_id} session {session_id}")
             
-            # Log the results
-            if clear_results["errors"]:
-                logger.warning(f"[CHAT] Memory clear completed with warnings: {clear_results['errors']}")
-            else:
-                logger.info(f"[CHAT] Memory clear completed successfully for user {user_id}, project {project_id}")
-                
-            # Prepare response message
-            cleared_components = []
-            if clear_results["legacy_cleared"]:
-                cleared_components.append("legacy memory")
-            if clear_results["enhanced_cleared"]:
-                cleared_components.append("enhanced memory")
-            if clear_results["session_cleared"]:
-                cleared_components.append("conversation sessions")
-            if clear_results["planning_reset"]:
-                cleared_components.append("planning state")
+            # Clear session-specific memory
+            try:
+                from memo.core import get_memory_system
+                memory = get_memory_system()
+                memory.clear_session_memories(user_id, project_id, session_id)
+                logger.info(f"[CHAT] Cleared session-specific memory for session {session_id}")
+            except Exception as me:
+                logger.warning(f"[CHAT] Failed to clear session memory: {me}")
             
-            message = f"Chat history cleared successfully. Cleared: {', '.join(cleared_components)}"
-            if clear_results["errors"]:
-                message += f" (Warnings: {len(clear_results['errors'])} issues)"
+            return MessageResponse(message=f"Session history cleared successfully. Removed {chat_result.deleted_count} messages.")
+        else:
+            logger.info(f"[CHAT] Cleared {chat_result.deleted_count} chat sessions for user {user_id} project {project_id}")
+            
+            # Clear all memory components using the new comprehensive clear method
+            try:
+                from memo.core import get_memory_system
+                memory = get_memory_system()
+                clear_results = memory.clear_all_memory(user_id, project_id)
                 
-        except Exception as me:
-            logger.warning(f"[CHAT] Failed to clear memory for user {user_id}: {me}")
-            message = "Chat history cleared (memory clear failed)"
-        
-        return MessageResponse(message=message)
+                # Log the results
+                if clear_results["errors"]:
+                    logger.warning(f"[CHAT] Memory clear completed with warnings: {clear_results['errors']}")
+                else:
+                    logger.info(f"[CHAT] Memory clear completed successfully for user {user_id}, project {project_id}")
+                    
+                # Prepare response message
+                cleared_components = []
+                if clear_results["legacy_cleared"]:
+                    cleared_components.append("legacy memory")
+                if clear_results["enhanced_cleared"]:
+                    cleared_components.append("enhanced memory")
+                if clear_results["session_cleared"]:
+                    cleared_components.append("conversation sessions")
+                if clear_results["planning_reset"]:
+                    cleared_components.append("planning state")
+                
+                message = f"Chat history cleared successfully. Cleared: {', '.join(cleared_components)}"
+                if clear_results["errors"]:
+                    message += f" (Warnings: {len(clear_results['errors'])} issues)"
+                    
+            except Exception as me:
+                logger.warning(f"[CHAT] Failed to clear memory for user {user_id}: {me}")
+                message = "Chat history cleared (memory clear failed)"
+            
+            return MessageResponse(message=message)
     except Exception as e:
         raise HTTPException(500, detail=f"Failed to clear chat history: {str(e)}")
 
@@ -276,6 +300,22 @@ async def chat(
         session_id = str(uuid.uuid4())
     
     try:
+        # Check if this is the first message in the session for auto-naming
+        if session_id:
+            existing_messages = rag.db["chat_sessions"].count_documents({
+                "user_id": user_id, 
+                "project_id": project_id, 
+                "session_id": session_id
+            })
+            
+            # If this is the first user message, trigger auto-naming
+            if existing_messages == 0:
+                try:
+                    await _auto_name_session(user_id, project_id, session_id, question)
+                    logger.info(f"[CHAT] Auto-named session {session_id}")
+                except Exception as e:
+                    logger.warning(f"[CHAT] Auto-naming failed: {e}")
+        
         return await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
     except asyncio.TimeoutError:
         logger.error("[CHAT] Chat request timed out after 120 seconds")
@@ -306,12 +346,22 @@ async def _chat_impl(
     if session_id:
         update_chat_status(session_id, "receiving", "Receiving request...", 5)
     
-    # Step 1: Retrieve and enhance prompt with conversation history FIRST with conversation management
+    # Step 1: Retrieve and enhance prompt with conversation history FIRST with session-specific memory
     try:
-        recent_context, semantic_context, context_metadata = await memory.get_smart_context(
-            user_id, question, nvidia_rotator, project_id, "chat"
+        # Get session-specific memory context
+        recent_context, semantic_context = memory.get_session_memory_context(
+            user_id, project_id, session_id, question
         )
-        logger.info(f"[CHAT] Smart context retrieved: recent={len(recent_context)}, semantic={len(semantic_context)}")
+        
+        # Fallback to global memory if no session-specific context
+        if not recent_context and not semantic_context:
+            recent_context, semantic_context, context_metadata = await memory.get_smart_context(
+                user_id, question, nvidia_rotator, project_id, "chat"
+            )
+        else:
+            context_metadata = {"session_specific": True}
+        
+        logger.info(f"[CHAT] Session-specific context retrieved: recent={len(recent_context)}, semantic={len(semantic_context)}")
         
         # Check for context switch
         context_switch_info = await memory.handle_context_switch(user_id, question, nvidia_rotator)
@@ -577,13 +627,24 @@ async def _chat_impl(
         from memo.history import get_history_manager
         history_manager = get_history_manager(memory)
         qa_sum = await history_manager.summarize_qa_with_nvidia(question, answer, nvidia_rotator)
+        
+        # Use session-specific memory storage
+        memory.add_session_memory(user_id, project_id, session_id, question, answer, {
+            "relevant_files": relevant_files,
+            "sources_count": len(sources_meta),
+            "timestamp": time.time()
+        })
+        
+        # Also add to global memory for backward compatibility
         memory.add(user_id, qa_sum)
+        
         if memory.is_enhanced_available():
             await memory.add_conversation_memory(
                 user_id=user_id,
                 question=question,
                 answer=answer,
                 project_id=project_id,
+                session_id=session_id,  # Add session_id to enhanced memory
                 context={
                     "relevant_files": relevant_files,
                     "sources_count": len(sources_meta),
@@ -739,3 +800,66 @@ async def chat_with_search(
 
     logger.info("[CHAT] Web-augmented answer len=%d, web_used=%d", len(answer or ""), len(web_sources_meta))
     return ChatAnswerResponse(answer=answer, sources=merged_sources, relevant_files=merged_files)
+
+
+async def _auto_name_session(user_id: str, project_id: str, session_id: str, first_query: str):
+    """Helper function to auto-name a session based on the first query"""
+    try:
+        if not nvidia_rotator:
+            return
+        
+        # Use NVIDIA_SMALL to generate a 2-3 word session name
+        sys_prompt = """You are an expert at creating concise, descriptive session names.
+
+Given a user's first query in a chat session, create a 2-3 word session name that captures the main topic or intent.
+
+Rules:
+- Use 2-3 words maximum
+- Be descriptive but concise
+- Use title case (capitalize first letter of each word)
+- Focus on the main topic or question type
+- Avoid generic terms like "Question" or "Chat"
+
+Examples:
+- "Machine Learning Basics" for "What is machine learning?"
+- "Python Functions" for "How do I create functions in Python?"
+- "Data Analysis" for "Can you help me analyze this dataset?"
+
+Return only the session name, nothing else."""
+
+        user_prompt = f"First query: {first_query}\n\nCreate a 2-3 word session name:"
+        
+        from utils.api.router import generate_answer_with_model
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        
+        response = await generate_answer_with_model(
+            selection=selection,
+            system_prompt=sys_prompt,
+            user_prompt=user_prompt,
+            gemini_rotator=None,
+            nvidia_rotator=nvidia_rotator
+        )
+        
+        # Clean up the response
+        session_name = response.strip()
+        # Remove quotes if present
+        if session_name.startswith('"') and session_name.endswith('"'):
+            session_name = session_name[1:-1]
+        if session_name.startswith("'") and session_name.endswith("'"):
+            session_name = session_name[1:-1]
+        
+        # Truncate if too long (safety measure)
+        if len(session_name) > 50:
+            session_name = session_name[:47] + "..."
+        
+        # Update the session with the auto-generated name
+        rag.db["chat_sessions"].update_many(
+            {"user_id": user_id, "project_id": project_id, "session_id": session_id},
+            {"$set": {"session_name": session_name, "is_auto_named": True}}
+        )
+        
+        logger.info(f"[CHAT] Auto-named session '{session_id}' to '{session_name}'")
+        
+    except Exception as e:
+        logger.warning(f"[CHAT] Auto-naming failed: {e}")
+        # Don't raise the exception to avoid breaking the chat flow

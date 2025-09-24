@@ -48,6 +48,9 @@ Core utilities for the EdSummariser RAG system providing document processing, re
 - **Conversation history**: LRU-based memory system
 - **Context retrieval**: Semantic and recent context selection
 - **NVIDIA integration**: File relevance classification
+- **Session-specific memory**: Isolated memory per chat session
+- **Auto-naming**: AI-powered session naming based on first query
+- **Memory cleanup**: Session and project-level memory management
 
 ## Key Features
 
@@ -130,5 +133,6 @@ utils/
 └── memo/           # Memory management
     ├── core.py     # Memory system core
     ├── history.py  # Conversation history
-    └── nvidia.py   # NVIDIA integration
+    ├── nvidia.py   # NVIDIA integration
+    └── session.py  # Session-specific memory management
 ```

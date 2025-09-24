@@ -16,6 +16,8 @@ API routes for the EdSummariser application, providing RESTful endpoints for aut
 - **Web Search**: Optional web augmentation for comprehensive answers
 - **Session Management**: Real-time status tracking and session continuity
 - **Memory Integration**: Automatic Q&A summarization and storage
+- **Session-Specific Memory**: Each session maintains its own conversation context
+- **Auto-Naming**: Sessions automatically named based on first user query
 
 ### **File Management** (`files.py`)
 - **Multi-format Upload**: PDF, DOCX support with background processing
@@ -36,8 +38,9 @@ API routes for the EdSummariser application, providing RESTful endpoints for aut
 ### **Project Management** (`projects.py`)
 - **Project CRUD**: Create, read, update, delete operations
 - **User Isolation**: Project ownership and access control
-- **Data Cleanup**: Cascading deletion of associated data
+- **Data Cleanup**: Cascading deletion of associated data including all sessions
 - **Metadata Tracking**: Creation and update timestamps
+- **Session Cleanup**: Complete removal of all session data when project is deleted
 
 ### **Search & Web** (`search.py`)
 - **Intelligent Search**: AI-powered keyword extraction and strategy generation
@@ -63,7 +66,8 @@ routes/
 ├── health.py           # Health check and monitoring
 ├── projects.py         # Project management
 ├── reports.py          # Report generation
-└── search.py           # Web search and content processing
+├── search.py           # Web search and content processing
+└── sessions.py         # Session management endpoints
 ```
 
 ## 🔧 Key Endpoints
@@ -76,8 +80,8 @@ routes/
 - `POST /chat` - Main chat endpoint with memory integration
 - `POST /chat/search` - Web-augmented chat
 - `POST /chat/save` - Save chat messages
-- `GET /chat/history` - Retrieve chat history
-- `DELETE /chat/history` - Clear chat history
+- `GET /chat/history` - Retrieve chat history (supports session_id filter)
+- `DELETE /chat/history` - Clear chat history (session-specific or project-wide)
 - `GET /chat/status/{session_id}` - Get chat processing status
 
 ### **File Management**
@@ -97,7 +101,15 @@ routes/
 - `POST /projects/create` - Create new project
 - `GET /projects` - List user projects
 - `GET /projects/{project_id}` - Get specific project
-- `DELETE /projects/{project_id}` - Delete project
+- `DELETE /projects/{project_id}` - Delete project and all associated sessions
+
+### **Session Management**
+- `GET /sessions/list` - List all sessions for a project
+- `POST /sessions/create` - Create new session
+- `PUT /sessions/rename` - Rename a session
+- `DELETE /sessions/delete` - Delete session and its memory
+- `POST /sessions/auto-name` - Auto-name session based on first query
+- `POST /sessions/clear-memory` - Clear session-specific memory
 
 ### **Health & Monitoring**
 - `GET /healthz` - Basic health check

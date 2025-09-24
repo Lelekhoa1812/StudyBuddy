@@ -90,12 +90,27 @@
       clearBtn.addEventListener('click', async () => {
         const user = window.__sb_get_user();
         const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
-        if (!user || !currentProject) return;
-        if (!confirm('Clear chat history for this project?')) return;
+        const currentSession = window.__sb_get_current_session && window.__sb_get_current_session();
+        if (!user || !currentProject || !currentSession) {
+          alert('Please select a session first');
+          return;
+        }
+        if (!confirm('Clear chat history for this session?')) return;
         try {
-          const res = await fetch(`/chat/history?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}`, { method: 'DELETE' });
+          const res = await fetch(`/chat/history?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}&session_id=${encodeURIComponent(currentSession)}`, { method: 'DELETE' });
           if (res.ok) {
             document.getElementById('messages').innerHTML = '';
+            // Also clear session-specific memory
+            try {
+              await fetch('/sessions/clear-memory', {
+                method: 'POST',
+                body: new FormData().append('user_id', user.user_id)
+                  .append('project_id', currentProject.project_id)
+                  .append('session_id', currentSession)
+              });
+            } catch (e) {
+              console.warn('Failed to clear session memory:', e);
+            }
           } else {
             alert('Failed to clear history');
           }
@@ -491,16 +506,20 @@
       return;
     }
 
+    // Get current session ID from session management
+    const sessionId = window.__sb_get_current_session && window.__sb_get_current_session();
+    if (!sessionId) {
+      alert('Please select a session first');
+      return;
+    }
+
     // Add user message
     appendMessage('user', question);
     questionInput.value = '';
     autoGrowTextarea();
 
     // Save user message to chat history
-    await saveChatMessage(user.user_id, currentProject.project_id, 'user', question);
-
-    // Generate session ID for status tracking
-    const sessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    await saveChatMessage(user.user_id, currentProject.project_id, 'user', question, null, sessionId);
     
     // Add thinking message with dynamic status
     const thinkingMsg = appendMessage('thinking', 'Receiving request...');
@@ -539,7 +558,7 @@
           appendMessage('assistant', data.report_markdown || 'No report', true); // isReport = true
           if (data.sources && data.sources.length) appendSources(data.sources);
           // Save assistant report to chat history for persistence
-          try { await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.report_markdown || 'No report'); } catch {}
+          try { await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', data.report_markdown || 'No report', null, sessionId); } catch {}
         } else {
           throw new Error(data.detail || 'Failed to generate report');
         }
@@ -569,7 +588,8 @@
             currentProject.project_id,
             'assistant',
             data.answer || 'No answer received',
-            (data.sources && data.sources.length > 0) ? data.sources : null
+            (data.sources && data.sources.length > 0) ? data.sources : null,
+            sessionId
           );
         } else {
           throw new Error(data.detail || 'Failed to get answer');
@@ -579,7 +599,7 @@
       thinkingMsg.remove();
       const errorMsg = `⚠️ Error: ${error.message}`;
       appendMessage('assistant', errorMsg);
-      await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', errorMsg);
+      await saveChatMessage(user.user_id, currentProject.project_id, 'assistant', errorMsg, null, sessionId);
     } finally {
       // Stop status polling
       if (statusInterval) {
@@ -688,7 +708,7 @@
     }
   });
 
-  async function saveChatMessage(userId, projectId, role, content, sources = null) {
+  async function saveChatMessage(userId, projectId, role, content, sources = null, sessionId = null) {
     try {
       const formData = new FormData();
       formData.append('user_id', userId);
@@ -698,6 +718,9 @@
       formData.append('timestamp', Date.now() / 1000);
       if (sources) {
         try { formData.append('sources', JSON.stringify(sources)); } catch {}
+      }
+      if (sessionId) {
+        formData.append('session_id', sessionId);
       }
       
       await fetch('/chat/save', { method: 'POST', body: formData });

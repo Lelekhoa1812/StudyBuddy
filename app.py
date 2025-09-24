@@ -9,6 +9,7 @@ import routes.projects as _routes_projects
 import routes.files as _routes_files
 import routes.reports as _routes_report
 import routes.chats as _routes_chat
+import routes.sessions as _routes_sessions
 import routes.health as _routes_health
 
 # Local dev

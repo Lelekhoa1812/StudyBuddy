@@ -194,7 +194,17 @@
             <div class="card-header">
               <h2>💬 Chat with Documents</h2>
               <p>Ask questions about your uploaded materials and get AI-powered answers</p>
-              <div style="margin-left:auto">
+              <div class="session-controls" style="margin-top: 16px; display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
+                <div class="session-dropdown-wrapper" style="display:flex; align-items:center; gap:4px;">
+                  <select id="session-dropdown" class="session-dropdown">
+                    <option value="">Select Session</option>
+                  </select>
+                  <button id="create-session-btn" class="btn-icon" title="Create new session">+</button>
+                </div>
+                <div class="session-actions" style="display:none;">
+                  <button id="rename-session-btn" class="btn-icon" title="Rename session">✏️</button>
+                  <button id="delete-session-btn" class="btn-icon" title="Delete session">🗑️</button>
+                </div>
                 <button id="clear-chat-btn" class="btn-secondary">Clear History</button>
               </div>
             </div>
@@ -310,6 +320,39 @@
     </div>
   </div>
 
+  <!-- Session Management Modals -->
+  <div id="rename-session-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="rename-session-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="rename-session-title">Rename Session</h2>
+        <p class="modal-subtitle">Enter a new name for this chat session</p>
+      </div>
+      <form id="rename-session-form">
+        <div class="form-group">
+          <label>Session Name</label>
+          <input type="text" id="session-name-input" placeholder="Enter session name" required>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="cancel-rename-session" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Rename</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="delete-session-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="delete-session-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="delete-session-title">Delete Session</h2>
+        <p class="modal-subtitle">Are you sure you want to delete this session? This action cannot be undone.</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="cancel-delete-session" class="btn-secondary">Cancel</button>
+        <button type="button" id="confirm-delete-session" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="loading-content">
@@ -323,6 +366,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="/static/auth.js"></script>
   <script src="/static/sidebar.js"></script>
+  <script src="/static/sessions.js"></script>
   <script src="/static/script.js"></script>
   <script src="/static/projects.js"></script>
 </body>

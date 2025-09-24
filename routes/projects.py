@@ -113,19 +113,52 @@ async def get_project(project_id: str, user_id: str):
 
 @app.delete("/projects/{project_id}", response_model=MessageResponse)
 async def delete_project(project_id: str, user_id: str):
-    """Delete a project and all its associated data"""
+    """Delete a project and all its associated data including all sessions"""
     # Check ownership
     project = rag.db["projects"].find_one({"project_id": project_id, "user_id": user_id})
     if not project:
         raise HTTPException(404, detail="Project not found")
     
-    # Delete project and all associated data
-    rag.db["projects"].delete_one({"project_id": project_id})
-    rag.db["chunks"].delete_many({"project_id": project_id})
-    rag.db["files"].delete_many({"project_id": project_id})
-    rag.db["chat_sessions"].delete_many({"project_id": project_id})
-    
-    logger.info(f"[PROJECT] Deleted project {project_id} for user {user_id}")
-    return MessageResponse(message="Project deleted successfully")
+    try:
+        # Delete project and all associated data
+        rag.db["projects"].delete_one({"project_id": project_id})
+        rag.db["chunks"].delete_many({"project_id": project_id})
+        rag.db["files"].delete_many({"project_id": project_id})
+        chat_result = rag.db["chat_sessions"].delete_many({"project_id": project_id})
+        
+        # Clear all session-specific memory for this project
+        try:
+            from memo.core import get_memory_system
+            memory = get_memory_system()
+            
+            # Clear session memories for this project
+            if memory.session_memory:
+                session_memory_result = memory.session_memory.session_memories.delete_many({
+                    "user_id": user_id,
+                    "project_id": project_id
+                })
+                logger.info(f"[PROJECT] Cleared {session_memory_result.deleted_count} session memories for project {project_id}")
+            
+            # Clear enhanced memory for this project
+            if memory.enhanced_available:
+                enhanced_result = memory.enhanced_memory.memories.delete_many({
+                    "user_id": user_id,
+                    "project_id": project_id
+                })
+                logger.info(f"[PROJECT] Cleared {enhanced_result.deleted_count} enhanced memories for project {project_id}")
+            
+            # Clear legacy memory for this user (since it's user-scoped, not project-scoped)
+            memory.legacy_memory.clear(user_id)
+            logger.info(f"[PROJECT] Cleared legacy memory for user {user_id}")
+            
+        except Exception as e:
+            logger.warning(f"[PROJECT] Failed to clear some memory components: {e}")
+        
+        logger.info(f"[PROJECT] Deleted project {project_id} for user {user_id} - removed {chat_result.deleted_count} chat sessions")
+        return MessageResponse(message=f"Project deleted successfully. Removed {chat_result.deleted_count} chat sessions and all associated data.")
+        
+    except Exception as e:
+        logger.error(f"[PROJECT] Failed to delete project {project_id}: {e}")
+        raise HTTPException(500, detail=f"Failed to delete project: {str(e)}")
 
 

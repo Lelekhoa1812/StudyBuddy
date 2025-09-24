@@ -738,40 +738,52 @@
     }
   }
   
-  function appendMessage(role, text, isReport = false) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `msg ${role}`;
-    
-    // Render Markdown for assistant messages
-    if (role === 'assistant') {
-      try {
-        // Use marked library to convert Markdown to HTML
-        const htmlContent = marked.parse(text);
-        messageDiv.innerHTML = htmlContent;
-        
-        // Add copy buttons to code blocks
-        addCopyButtonsToCodeBlocks(messageDiv);
-        
-        // Add download PDF button for reports
-        if (isReport) {
-          addDownloadPdfButton(messageDiv, text);
-        }
-      } catch (e) {
-        // Fallback to plain text if Markdown parsing fails
-        messageDiv.textContent = text;
-      }
-    } else {
-      messageDiv.textContent = text;
+  function renderAssistantMarkdown(container, markdown, isReport) {
+    try {
+      const htmlContent = marked.parse(markdown);
+      container.innerHTML = htmlContent;
+      // Render Mermaid if present
+      renderMermaidInElement(container);
+      // Add copy buttons to code blocks
+      addCopyButtonsToCodeBlocks(container);
+      // Add download PDF button for reports
+      if (isReport) addDownloadPdfButton(container, markdown);
+    } catch (e) {
+      container.textContent = markdown;
     }
-    
-    messages.appendChild(messageDiv);
-    
-    // Scroll to bottom
-    requestAnimationFrame(() => {
-      messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+
+  // Dynamically load Mermaid and render mermaid code blocks
+  async function ensureMermaidLoaded() {
+    if (window.mermaid && window.mermaid.initialize) return true;
+    return new Promise((resolve) => {
+      const existing = document.querySelector('script[data-sb-mermaid]');
+      if (existing) { existing.addEventListener('load', () => resolve(true)); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+      s.async = true;
+      s.dataset.sbMermaid = '1';
+      s.onload = () => {
+        try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' }); } catch {}
+        resolve(true);
+      };
+      document.head.appendChild(s);
     });
-    
-    return messageDiv;
+  }
+
+  async function renderMermaidInElement(el) {
+    const mermaidBlocks = el.querySelectorAll('code.language-mermaid, pre code.language-mermaid');
+    if (!mermaidBlocks.length) return;
+    await ensureMermaidLoaded();
+    mermaidBlocks.forEach((codeBlock, idx) => {
+      const graph = codeBlock.textContent;
+      const wrapper = document.createElement('div');
+      const id = `mermaid-${Date.now()}-${idx}`;
+      wrapper.className = 'mermaid';
+      wrapper.id = id;
+      codeBlock.parentElement.replaceWith(wrapper);
+      try { window.mermaid.render(id + '-svg', graph, (svg) => { wrapper.innerHTML = svg; }); } catch {}
+    });
   }
 
   // Expose markdown-aware appenders for use after refresh (projects.js)
@@ -1161,7 +1173,6 @@
   function appendMessage(role, text, isReport = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `msg ${role}`;
-    
     if (role === 'thinking') {
       messageDiv.innerHTML = `
         <div class="thinking-container">
@@ -1172,34 +1183,14 @@
         </div>
       `;
     } else if (role === 'assistant') {
-      // Render Markdown for assistant messages
-      try {
-        // Use marked library to convert Markdown to HTML
-        const htmlContent = marked.parse(text);
-        messageDiv.innerHTML = htmlContent;
-        
-        // Add copy buttons to code blocks
-        addCopyButtonsToCodeBlocks(messageDiv);
-        
-        // Add download PDF button for reports
-        if (isReport) {
-          addDownloadPdfButton(messageDiv, text);
-        }
-      } catch (e) {
-        // Fallback to plain text if Markdown parsing fails
-        messageDiv.textContent = text;
-      }
+      renderAssistantMarkdown(messageDiv, text, isReport);
     } else {
       messageDiv.textContent = text;
     }
-    
     messages.appendChild(messageDiv);
-    
-    // Scroll to bottom
     requestAnimationFrame(() => {
       messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
     });
-    
     return messageDiv;
   }
 })();

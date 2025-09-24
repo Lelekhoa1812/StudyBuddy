@@ -459,6 +459,23 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
                 expected_output, quality_checks, context_text, web_context, filename, 
                 agent_context, nvidia_rotator, gemini_rotator
             )
+
+            # If the subtask implies coding, generate code artifacts and explanations
+            if any(kw in (task.lower() + " " + reasoning.lower()) for kw in ["implement", "code", "function", "class", "api", "script", "module", "endpoint"]):
+                try:
+                    code_markdown = await generate_code_artifacts(
+                        subsection_id=subsection_id,
+                        task=task,
+                        reasoning=reasoning,
+                        context_text=context_text,
+                        web_context=web_context,
+                        gemini_rotator=gemini_rotator,
+                        nvidia_rotator=nvidia_rotator
+                    )
+                    # Append code and explanation beneath the analysis
+                    subtask_result = subtask_result + "\n\n" + code_markdown
+                except Exception as ce:
+                    logger.warning(f"[REPORT] Code generation failed for {subsection_id}: {ce}")
             
             # Store agent context for next agents
             agent_context[f"{section_id}.{subtask_number}"] = {
@@ -533,7 +550,7 @@ async def analyze_subtask_with_cot_references(subsection_id: str, task: str, rea
     sub_actions_text = "\n".join([f"- {action}" for action in sub_actions]) if sub_actions else "No specific sub-actions defined"
     quality_checks_text = "\n".join([f"- {check}" for check in quality_checks]) if quality_checks else "No specific quality checks defined"
     
-    sys_prompt = f"""You are an expert analyst performing comprehensive research as part of a hierarchical report generation system. 
+    sys_prompt = f"""You are an expert analyst performing comprehensive research as part of a hierarchical report generation system.
 
 SUBSECTION ID: {subsection_id}
 TASK: {task}
@@ -565,6 +582,19 @@ CRITICAL REQUIREMENTS:
 - Pass all quality checks
 - Integrate findings with previous work through CoT references
 - Create detailed, comprehensive content (not just summaries)
+
+WHEN THE TASK IMPLIES IMPLEMENTATION OR CODING:
+- Propose concrete code solutions using fenced code blocks with proper language tags
+- Organize code by files and paths (e.g., ```python
+# File: utils/service/new_module.py
+...
+```)
+- Keep code self-contained and runnable; include imports and minimal scaffolding if needed
+- Add brief explanation after each code block (what/why), linking back to requirements
+
+WHEN VISUAL STRUCTURE HELPS (flows/architecture/timelines):
+- Include a Mermaid diagram as a fenced ```mermaid block when genuinely helpful (not always)
+- Prefer sequence diagrams for flows, class diagrams for structure, graph diagrams for dependencies
 
 Return only the comprehensive analysis, no meta-commentary or introductory phrases."""
 
@@ -641,6 +671,14 @@ CRITICAL REQUIREMENTS:
 - Reference and build upon previous work through CoT
 - Create detailed, comprehensive content (not summaries)
 - Use proper hierarchical numbering and structure
+
+CODING ARTIFACTS:
+- If subsections include code, consolidate into a coherent file-by-file set
+- Ensure consistent naming, imports, and integration across files
+- Provide short rationale per file and note relationships (e.g., section 2.1 uses helper from 1.2)
+
+DIAGRAMS:
+- If helpful, include a single Mermaid diagram summarizing relationships across subsections
 
 Return only the synthesized analysis with proper hierarchical structure, no meta-commentary."""
 
@@ -760,6 +798,16 @@ HIERARCHICAL STRUCTURE REQUIREMENTS:
 - Professional, analytical tone
 - Chain of Thought integration showing how sections build upon each other
 
+CODING GENERATION (WHEN REQUESTED/IMPLIED):
+- Produce file-by-file code blocks with file path headers
+- Ensure code compiles and integrates across files (imports, shared types)
+- For each file, include a short explanation and why this design
+- Link code back to the report sections/subsections where it originates
+
+DIAGRAMS (WHEN HELPFUL):
+- Include concise Mermaid diagrams to visualize flows/architecture
+- Use fenced ```mermaid blocks so the UI can render them
+
 CRITICAL: Start the report immediately with substantive content. Do NOT include meta-commentary like "Here is a comprehensive report..." or "Of course, here is...". Begin directly with the report title and content."""
 
     user_prompt = f"""USER REQUEST: {instructions}
@@ -789,6 +837,16 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         # Post-process to remove any remaining meta-commentary and ensure proper formatting
         report = remove_meta_commentary(report)
         report = ensure_hierarchical_structure(report)
+
+        # Optionally enrich with Mermaid diagrams when useful
+        try:
+            if should_generate_mermaid(instructions, report):
+                diagram = await generate_mermaid_diagram(instructions, detailed_analysis, gemini_rotator, nvidia_rotator)
+                if diagram:
+                    # Prepend a Diagrams section
+                    report = ("## Diagrams\n\n" + "```mermaid\n" + diagram.strip() + "\n```\n\n" + report)
+        except Exception as me:
+            logger.warning(f"[REPORT] Mermaid generation skipped: {me}")
         
         logger.info(f"[REPORT] Comprehensive hierarchical report synthesized, length: {len(report)} characters")
         return report
@@ -800,6 +858,73 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         fallback_report += analysis_summary
         fallback_report += f"\n\n## Conclusion\n\n{instructions}"
         return fallback_report
+
+async def generate_code_artifacts(subsection_id: str, task: str, reasoning: str, context_text: str, web_context: str, gemini_rotator, nvidia_rotator) -> str:
+    """Generate code (files-by-files) with explanations using Gemini Pro, grounded in context."""
+    system_prompt = (
+        "You are a senior software engineer. Generate production-quality code that fulfills the TASK,\n"
+        "grounded strictly in the provided CONTEXT.\n"
+        "Rules:\n"
+        "- Output Markdown with multiple code blocks by file, each preceded by a short heading 'File: path'.\n"
+        "- Prefer clear, minimal dependencies.\n"
+        "- After each code block, add a concise explanation of design decisions.\n"
+        "- If APIs/endpoints are referenced, ensure coherent naming across files.\n"
+        "- Do not include meta text like 'Here is the code'. Start with the first file heading."
+    )
+    user_prompt = (
+        f"SUBSECTION {subsection_id}\nTASK: {task}\nREASONING: {reasoning}\n\n"
+        f"CONTEXT (DOCUMENT):\n{trim_text(context_text, 6000)}\n\n"
+        f"CONTEXT (WEB):\n{trim_text(web_context, 3000)}\n\n"
+        "Produce the code files and explanations as specified."
+    )
+    selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
+    code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+    return code_md.strip()
+
+def should_generate_mermaid(instructions: str, report_text: str) -> bool:
+    """Heuristic to decide whether to include a Mermaid diagram."""
+    intent = (instructions or "") + " " + (report_text or "")
+    keywords = ("architecture", "workflow", "data flow", "sequence", "state machine", "er diagram", "dependency", "pipeline", "diagram")
+    if any(k in intent.lower() for k in keywords):
+        return True
+    return False
+
+async def generate_mermaid_diagram(instructions: str, detailed_analysis: Dict[str, Any], gemini_rotator, nvidia_rotator) -> str:
+    """Use NVIDIA_LARGE (GPT-OSS) to synthesize a concise Mermaid diagram when helpful."""
+    try:
+        # Build a compact overview context from section titles and key insights
+        overview = []
+        for title, data in detailed_analysis.items():
+            section_id = data.get("section_id", "")
+            insights = extract_key_insights(data.get("section_synthesis", ""))
+            overview.append(f"{section_id} {title}: " + "; ".join(insights))
+        context_overview = "\n".join(overview)
+
+        sys_prompt = (
+            "You are an expert technical illustrator. Create a single concise Mermaid diagram that best conveys the core structure\n"
+            "(e.g., flowchart, sequence, class, state, or ER) based on the provided CONTEXT.\n"
+            "Rules:\n"
+            "- Return Mermaid code only (no backticks, no explanations).\n"
+            "- Prefer flowchart or sequence if uncertain.\n"
+            "- Keep node labels short but meaningful.\n"
+            "- Ensure Mermaid syntax is valid."
+        )
+        user_prompt = f"INSTRUCTIONS:\n{instructions}\n\nCONTEXT OVERVIEW:\n{context_overview}"
+
+        # Use NVIDIA_LARGE for diagram synthesis
+        selection = {"provider": "nvidia_large", "model": os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b")}
+        diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        # Strip accidental code fences
+        diagram = diagram.strip()
+        if diagram.startswith("```"):
+            diagram = diagram.strip('`')
+            # Attempt to remove language header if present
+            if diagram.lower().startswith("mermaid"):
+                diagram = "\n".join(diagram.splitlines()[1:])
+        return diagram
+    except Exception as e:
+        logger.warning(f"[REPORT] Mermaid generation error: {e}")
+        return ""
 
 
 def build_cot_references(agent_context: Dict[str, Any], current_subsection_id: str) -> str:

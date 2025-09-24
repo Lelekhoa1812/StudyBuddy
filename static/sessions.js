@@ -334,11 +334,20 @@
       const response = await fetch(`/chat/history?user_id=${encodeURIComponent(user.user_id)}&project_id=${encodeURIComponent(currentProject.project_id)}&session_id=${encodeURIComponent(currentSessionId)}`);
       if (response.ok) {
         const data = await response.json();
-        const messages = document.getElementById('messages');
-        if (messages && data.messages) {
-          messages.innerHTML = '';
+        const msgContainer = document.getElementById('messages');
+        if (msgContainer && data.messages) {
+          msgContainer.innerHTML = '';
+          // Use unified renderer from script.js to ensure consistent UX
           data.messages.forEach(message => {
-            appendMessage(message.role, message.content, message.sources);
+            const isReport = !!message.is_report;
+            // Render the message
+            if (window.appendMessage) {
+              window.appendMessage(message.role, message.content, isReport);
+            }
+            // Render sources separately to avoid mixing with content
+            if (message.sources && message.sources.length && window.appendSources) {
+              window.appendSources(message.sources);
+            }
           });
         }
       }
@@ -347,35 +356,7 @@
     }
   }
   
-  function appendMessage(role, content, sources = []) {
-    const messages = document.getElementById('messages');
-    if (!messages) return;
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role}`;
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
-    
-    if (role === 'assistant') {
-      contentDiv.innerHTML = marked.parse(content);
-    } else {
-      contentDiv.textContent = content;
-    }
-    
-    messageDiv.appendChild(contentDiv);
-    
-    // Add sources if available
-    if (sources && sources.length > 0) {
-      const sourcesDiv = document.createElement('div');
-      sourcesDiv.className = 'message-sources';
-      sourcesDiv.innerHTML = '<strong>Sources:</strong> ' + sources.map(s => s.filename || s.url || 'Unknown').join(', ');
-      messageDiv.appendChild(sourcesDiv);
-    }
-    
-    messages.appendChild(messageDiv);
-    messages.scrollTop = messages.scrollHeight;
-  }
+  // Remove local appendMessage in favor of the unified version from script.js
   
   // Function to update session name in UI immediately
   function updateSessionName(sessionId, newName) {

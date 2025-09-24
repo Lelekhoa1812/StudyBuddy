@@ -764,7 +764,11 @@
       s.async = true;
       s.dataset.sbMermaid = '1';
       s.onload = () => {
-        try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' }); } catch {}
+        try {
+          if (window.mermaid && window.mermaid.initialize) {
+            window.mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' });
+          }
+        } catch {}
         resolve(true);
       };
       document.head.appendChild(s);
@@ -775,15 +779,33 @@
     const mermaidBlocks = el.querySelectorAll('code.language-mermaid, pre code.language-mermaid');
     if (!mermaidBlocks.length) return;
     await ensureMermaidLoaded();
-    mermaidBlocks.forEach((codeBlock, idx) => {
-      const graph = codeBlock.textContent;
+    const isV10 = !!(window.mermaid && window.mermaid.render && typeof window.mermaid.render === 'function');
+    for (let idx = 0; idx < mermaidBlocks.length; idx++) {
+      const codeBlock = mermaidBlocks[idx];
+      const graph = codeBlock.textContent || '';
       const wrapper = document.createElement('div');
       const id = `mermaid-${Date.now()}-${idx}`;
       wrapper.className = 'mermaid';
       wrapper.id = id;
-      codeBlock.parentElement.replaceWith(wrapper);
-      try { window.mermaid.render(id + '-svg', graph, (svg) => { wrapper.innerHTML = svg; }); } catch {}
-    });
+      const replaceTarget = codeBlock.parentElement && codeBlock.parentElement.tagName.toLowerCase() === 'pre' ? codeBlock.parentElement : codeBlock;
+      replaceTarget.replaceWith(wrapper);
+      try {
+        if (isV10) {
+          const out = await window.mermaid.render(id + '-svg', graph);
+          if (out && out.svg) {
+            wrapper.innerHTML = out.svg;
+            if (out.bindFunctions) { out.bindFunctions(wrapper); }
+          }
+        } else if (window.mermaid && window.mermaid.init) {
+          // Legacy fallback
+          wrapper.textContent = graph;
+          window.mermaid.init(undefined, wrapper);
+        }
+      } catch (e) {
+        console.warn('Mermaid render failed:', e);
+        wrapper.textContent = graph;
+      }
+    }
   }
 
   // Expose markdown-aware appenders for use after refresh (projects.js)

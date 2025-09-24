@@ -659,9 +659,11 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
             leading=14
         )
         
+        # Some reportlab versions don't include 'Code' in sample styles
+        base_code_parent = styles['Code'] if 'Code' in styles.byName else styles['Normal']
         code_style = ParagraphStyle(
             'Code',
-            parent=styles['Code'],
+            parent=base_code_parent,
             fontSize=9,
             fontName='Courier',
             textColor=colors.HexColor('#d4d4d4'),

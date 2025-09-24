@@ -203,6 +203,7 @@ async def delete_all_chat_history(user_id: str):
 
 # In-memory status tracking for real-time updates
 chat_status_store = {}
+_embedding_cache = {}
 
 @app.get("/chat/status/{session_id}", response_model=StatusUpdateResponse)
 async def get_chat_status(session_id: str):
@@ -349,19 +350,23 @@ async def chat(
                 rag.db["chat_sessions"].insert_one(session_data)
                 logger.info(f"[CHAT] Created session record for {session_id}")
             
-            # If this is the first user message, trigger auto-naming
+            # If this is the first user message, trigger auto-naming (non-blocking)
             if existing_messages == 0:
                 try:
                     from helpers.namer import auto_name_session_immediate
-                    session_name = await auto_name_session_immediate(
-                        user_id, project_id, session_id, question, nvidia_rotator, rag.db
-                    )
-                    if session_name:
-                        logger.info(f"[CHAT] Auto-named session {session_id} to '{session_name}'")
-                    else:
-                        logger.warning(f"[CHAT] Auto-naming failed for session {session_id}")
+                    import asyncio as _asyncio_name
+                    async def _do_name():
+                        try:
+                            _name = await auto_name_session_immediate(
+                                user_id, project_id, session_id, question, nvidia_rotator, rag.db
+                            )
+                            if _name:
+                                logger.info(f"[CHAT] Auto-named session {session_id} to '{_name}'")
+                        except Exception as _e:
+                            logger.warning(f"[CHAT] Auto-naming failed: {_e}")
+                    _asyncio_name.create_task(_do_name())
                 except Exception as e:
-                    logger.warning(f"[CHAT] Auto-naming failed: {e}")
+                    logger.warning(f"[CHAT] Auto-naming scheduling failed: {e}")
         
         # Get the chat response
         chat_response = await asyncio.wait_for(_chat_impl(user_id, project_id, question, k, use_web=use_web, max_web=max_web, session_id=session_id), timeout=120.0)
@@ -502,29 +507,55 @@ async def _chat_impl(
     # Use enhanced question for better query variations
     enhanced_queries = await _generate_query_variations(enhanced_question, nvidia_rotator)
     logger.info(f"[CHAT] Generated {len(enhanced_queries)} query variations")
-    
+
     # Update status: Planning action (planning search strategy)
     if session_id:
         update_chat_status(session_id, "planning", "Planning action...", 25)
+
+    # Batch-embed all query variants once
+    # Simple per-session embedding cache
+    cache_key = f"{project_id}:{session_id or 'na'}:" + ("|".join(enhanced_queries))[:512]
+    try:
+        now_ts = time.time()
+        # Evict stale entries (older than 10 minutes) or keep cache under 128 items
+        if len(_embedding_cache) > 128:
+            for k in list(_embedding_cache.keys())[:32]:
+                _embedding_cache.pop(k, None)
+        if cache_key in _embedding_cache and (now_ts - _embedding_cache[cache_key][0] < 600):
+            query_vectors = _embedding_cache[cache_key][1]
+        else:
+            query_vectors = embedder.embed(enhanced_queries)
+            _embedding_cache[cache_key] = (now_ts, query_vectors)
+    except Exception as e:
+        logger.warning(f"[CHAT] Batch embedding failed, falling back per-query: {e}")
+        query_vectors = [embedder.embed([q])[0] for q in enhanced_queries]
+
+    # Run vector searches concurrently across strategies and query variants
     all_hits = []
     search_strategies = ["flat", "hybrid", "local"]
+    tasks = []
+    import asyncio as _asyncio
     for strategy in search_strategies:
-        for query_variant in enhanced_queries:
-            q_vec = embedder.embed([query_variant])[0]
-            hits = rag.vector_search(
+        for q_vec in query_vectors:
+            tasks.append(_asyncio.to_thread(
+                rag.vector_search,
                 user_id=user_id,
                 project_id=project_id,
                 query_vector=q_vec,
                 k=k,
                 filenames=relevant_files if relevant_files else None,
                 search_type=strategy
-            )
-            if hits:
-                all_hits.extend(hits)
-                logger.info(f"[CHAT] {strategy} search with '{query_variant[:50]}...' returned {len(hits)} hits")
-                break
-        if all_hits:
-            break
+            ))
+    try:
+        results = await _asyncio.gather(*tasks, return_exceptions=True)
+        for idx, res in enumerate(results):
+            if isinstance(res, Exception):
+                continue
+            if res:
+                all_hits.extend(res)
+        logger.info(f"[CHAT] Parallel search produced {len(all_hits)} raw hits across {len(tasks)} tasks")
+    except Exception as e:
+        logger.warning(f"[CHAT] Parallel search failed: {e}")
     hits = _deduplicate_and_rank_hits(all_hits, question)
     logger.info(f"[CHAT] Final vector search returned {len(hits) if hits else 0} hits")
     if not hits:
@@ -682,38 +713,48 @@ async def _chat_impl(
         from memo.history import get_history_manager
         history_manager = get_history_manager(memory)
         qa_sum = await history_manager.summarize_qa_with_nvidia(question, answer, nvidia_rotator)
-        
+
         # Use session-specific memory storage
         memory.add_session_memory(user_id, project_id, session_id, question, answer, {
             "relevant_files": relevant_files,
             "sources_count": len(sources_meta),
             "timestamp": time.time()
         })
-        
+
         # Also add to global memory for backward compatibility
         memory.add(user_id, qa_sum)
-        
-        if memory.is_enhanced_available():
-            await memory.add_conversation_memory(
-                user_id=user_id,
-                question=question,
-                answer=answer,
-                project_id=project_id,
-                session_id=session_id,  # Add session_id to enhanced memory
-                context={
-                    "relevant_files": relevant_files,
-                    "sources_count": len(sources_meta),
-                    "timestamp": time.time()
-                }
-            )
-            
-            # Trigger memory consolidation if needed
+
+        # Enhanced memory writes and consolidation deferred to background
+        async def _write_enhanced_and_consolidate():
             try:
-                consolidation_result = await memory.consolidate_memories(user_id, nvidia_rotator)
-                if consolidation_result.get("consolidated", 0) > 0:
-                    logger.info(f"[CHAT] Memory consolidated: {consolidation_result}")
-            except Exception as e:
-                logger.warning(f"[CHAT] Memory consolidation failed: {e}")
+                if memory.is_enhanced_available():
+                    await memory.add_conversation_memory(
+                        user_id=user_id,
+                        question=question,
+                        answer=answer,
+                        project_id=project_id,
+                        session_id=session_id,
+                        context={
+                            "relevant_files": relevant_files,
+                            "sources_count": len(sources_meta),
+                            "timestamp": time.time()
+                        }
+                    )
+                    try:
+                        consolidation_result = await memory.consolidate_memories(user_id, nvidia_rotator)
+                        if consolidation_result.get("consolidated", 0) > 0:
+                            logger.info(f"[CHAT] Memory consolidated: {consolidation_result}")
+                    except Exception as ce:
+                        logger.warning(f"[CHAT] Memory consolidation failed: {ce}")
+            except Exception as we:
+                logger.warning(f"[CHAT] Enhanced memory write failed: {we}")
+
+        try:
+            import asyncio as _asyncio2
+            _asyncio2.create_task(_write_enhanced_and_consolidate())
+        except Exception:
+            # If scheduling fails, fall back to inline write
+            await _write_enhanced_and_consolidate()
     except Exception as e:
         logger.warning(f"QA summarize/store failed: {e}")
     # Merge web sources if any (normalize to filename=url for frontend display)

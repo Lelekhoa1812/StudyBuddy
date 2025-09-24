@@ -425,12 +425,14 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
     subsection_number = 1
     agent_context = {}  # Store context from previous agents for CoT references
     
-    for section in sections:
+    import asyncio as _asyncio
+    semaphore = _asyncio.Semaphore(4)  # limit concurrency to avoid provider rate limits
+
+    async def _process_section(section, section_number_local, agent_context_shared):
+        nonlocal subsection_number
         section_title = section.get("title", "Unknown Section")
         section_priority = section.get("priority", "important")
-        
-        # Assign section number (1, 2, 3, etc.)
-        section_id = f"{section_number}"
+        section_id = f"{section_number_local}"
         section_analysis = {
             "section_id": section_id,
             "title": section_title,
@@ -438,94 +440,94 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
             "priority": section_priority,
             "subtask_results": [],
             "section_synthesis": "",
-            "agent_context": agent_context.copy()  # Pass context from previous agents
+            "agent_context": agent_context_shared.copy()
         }
-        
-        # Process each subtask with hierarchical subsection assignment
-        subtask_number = 1
-        for subtask in section.get("subtasks", []):
-            task = subtask.get("task", "")
-            reasoning = subtask.get("reasoning", "")
-            sources_needed = subtask.get("sources_needed", ["local"])
-            depth = subtask.get("depth", "detailed")
-            sub_actions = subtask.get("sub_actions", [])
-            expected_output = subtask.get("expected_output", "")
-            quality_checks = subtask.get("quality_checks", [])
-            
-            # Assign subsection number (1.1, 1.2, 2.1, 2.2, etc.)
-            subsection_id = f"{section_number}.{subtask_number}"
-            
-            # Generate comprehensive analysis with CoT references
-            subtask_result = await analyze_subtask_with_cot_references(
-                subsection_id, task, reasoning, sources_needed, depth, sub_actions, 
-                expected_output, quality_checks, context_text, web_context, filename, 
-                agent_context, nvidia_rotator, gemini_rotator
-            )
 
-            # If the subtask implies coding, generate code artifacts and explanations
-            if any(kw in (task.lower() + " " + reasoning.lower()) for kw in ["implement", "code", "function", "class", "api", "script", "module", "endpoint"]):
-                try:
-                    logger.info(f"[REPORT] Triggering code generation for {subsection_id}")
-                    code_markdown = await generate_code_artifacts(
-                        subsection_id=subsection_id,
-                        task=task,
-                        reasoning=reasoning,
-                        context_text=context_text,
-                        web_context=web_context,
-                        gemini_rotator=gemini_rotator,
-                        nvidia_rotator=nvidia_rotator
-                    )
-                    # Append code and explanation beneath the analysis
-                    subtask_result = subtask_result + "\n\n" + code_markdown
-                    # Parse structured code for indexing and downstream usage
+        async def _process_subtask(subtask, subtask_index):
+            async with semaphore:
+                task = subtask.get("task", "")
+                reasoning = subtask.get("reasoning", "")
+                sources_needed = subtask.get("sources_needed", ["local"])
+                depth = subtask.get("depth", "detailed")
+                sub_actions = subtask.get("sub_actions", [])
+                expected_output = subtask.get("expected_output", "")
+                quality_checks = subtask.get("quality_checks", [])
+                subsection_id = f"{section_number_local}.{subtask_index}"
+                subtask_result = await analyze_subtask_with_cot_references(
+                    subsection_id, task, reasoning, sources_needed, depth, sub_actions,
+                    expected_output, quality_checks, context_text, web_context, filename,
+                    agent_context_shared, nvidia_rotator, gemini_rotator
+                )
+                code_blocks = None
+                if any(kw in (task.lower() + " " + reasoning.lower()) for kw in ["implement", "code", "function", "class", "api", "script", "module", "endpoint"]):
                     try:
-                        code_blocks = extract_structured_code(code_markdown)
-                    except Exception as pe:
-                        logger.warning(f"[REPORT] Failed to parse structured code for {subsection_id}: {pe}")
-                        code_blocks = []
-                except Exception as ce:
-                    logger.warning(f"[REPORT] Code generation failed for {subsection_id}: {ce}")
-            
-            # Store agent context for next agents
-            agent_context[f"{section_id}.{subtask_number}"] = {
-                "subsection_id": subsection_id,
-                "task": task,
-                "key_findings": extract_key_findings(subtask_result),
-                "evidence": extract_evidence(subtask_result),
-                "conclusions": extract_conclusions(subtask_result)
-            }
-            
-            section_analysis["subtask_results"].append({
-                "subsection_id": subsection_id,
-                "task": task,
-                "reasoning": reasoning,
-                "depth": depth,
-                "sub_actions": sub_actions,
-                "expected_output": expected_output,
-                "quality_checks": quality_checks,
-                "analysis": subtask_result,
-                **({"code_blocks": code_blocks} if 'code_blocks' in locals() else {}),
-                "agent_context": agent_context.copy()
-            })
-            
-            subtask_number += 1
-        
-        # Generate section-level synthesis with cross-references
+                        logger.info(f"[REPORT] Triggering code generation for {subsection_id}")
+                        code_markdown = await generate_code_artifacts(
+                            subsection_id=subsection_id,
+                            task=task,
+                            reasoning=reasoning,
+                            context_text=context_text,
+                            web_context=web_context,
+                            gemini_rotator=gemini_rotator,
+                            nvidia_rotator=nvidia_rotator
+                        )
+                        subtask_result = subtask_result + "\n\n" + code_markdown
+                        try:
+                            code_blocks = extract_structured_code(code_markdown)
+                        except Exception as pe:
+                            logger.warning(f"[REPORT] Failed to parse structured code for {subsection_id}: {pe}")
+                            code_blocks = []
+                    except Exception as ce:
+                        logger.warning(f"[REPORT] Code generation failed for {subsection_id}: {ce}")
+                agent_context_shared[f"{section_id}.{subtask_index}"] = {
+                    "subsection_id": subsection_id,
+                    "task": task,
+                    "key_findings": extract_key_findings(subtask_result),
+                    "evidence": extract_evidence(subtask_result),
+                    "conclusions": extract_conclusions(subtask_result)
+                }
+                section_analysis["subtask_results"].append({
+                    "subsection_id": subsection_id,
+                    "task": task,
+                    "reasoning": reasoning,
+                    "depth": depth,
+                    "sub_actions": sub_actions,
+                    "expected_output": expected_output,
+                    "quality_checks": quality_checks,
+                    "analysis": subtask_result,
+                    **({"code_blocks": code_blocks} if code_blocks is not None else {}),
+                    "agent_context": agent_context_shared.copy()
+                })
+
+        subtask_tasks = []
+        subtask_index = 1
+        for subtask in section.get("subtasks", []):
+            subtask_tasks.append(_process_subtask(subtask, subtask_index))
+            subtask_index += 1
+        if subtask_tasks:
+            await _asyncio.gather(*subtask_tasks)
+
         section_synthesis = await synthesize_section_with_cot_references(
-            section_analysis, synthesis_strategy, agent_context, nvidia_rotator, gemini_rotator
+            section_analysis, synthesis_strategy, agent_context_shared, nvidia_rotator, gemini_rotator
         )
         section_analysis["section_synthesis"] = section_synthesis
-        
-        # Update agent context with section-level insights
-        agent_context[f"section_{section_id}"] = {
+        agent_context_shared[f"section_{section_id}"] = {
             "section_id": section_id,
             "title": section_title,
             "key_insights": extract_key_insights(section_synthesis),
             "cross_references": extract_cross_references(section_synthesis)
         }
-        
-        detailed_analysis[section_title] = section_analysis
+        return section_title, section_analysis
+
+    section_tasks = []
+    for section in sections:
+        section_tasks.append(_process_section(section, section_number, agent_context))
         section_number += 1
+    if section_tasks:
+        results = await _asyncio.gather(*section_tasks)
+        for title, analysis in results:
+            detailed_analysis[title] = analysis
+    
     
     logger.info(f"[REPORT] Completed hierarchical analysis for {len(detailed_analysis)} sections with CoT references")
     return detailed_analysis

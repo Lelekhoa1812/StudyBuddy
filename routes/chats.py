@@ -323,8 +323,21 @@ async def chat(
                 "session_id": session_id
             })
             
-            # If this is the first user message, trigger auto-naming
+            # If this is the first user message, create session and trigger auto-naming
             if existing_messages == 0:
+                # Create session record first
+                session_data = {
+                    "user_id": user_id,
+                    "project_id": project_id,
+                    "session_id": session_id,
+                    "session_name": "New Chat",
+                    "is_auto_named": True,
+                    "created_at": datetime.now(timezone.utc),
+                    "timestamp": time.time()
+                }
+                rag.db["chat_sessions"].insert_one(session_data)
+                
+                # Now trigger auto-naming
                 try:
                     await _auto_name_session(user_id, project_id, session_id, question)
                     logger.info(f"[CHAT] Auto-named session {session_id}")

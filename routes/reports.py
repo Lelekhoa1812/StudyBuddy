@@ -10,6 +10,8 @@ from .search import build_web_context
 from helpers.models import ReportResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
+from helpers.coder import generate_code_artifacts
+from helpers.diagram import should_generate_mermaid, generate_mermaid_diagram
 
 
 # In-memory status tracking for report generation
@@ -463,6 +465,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
             # If the subtask implies coding, generate code artifacts and explanations
             if any(kw in (task.lower() + " " + reasoning.lower()) for kw in ["implement", "code", "function", "class", "api", "script", "module", "endpoint"]):
                 try:
+                    logger.info(f"[REPORT] Triggering code generation for {subsection_id}")
                     code_markdown = await generate_code_artifacts(
                         subsection_id=subsection_id,
                         task=task,
@@ -841,10 +844,12 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         # Optionally enrich with Mermaid diagrams when useful
         try:
             if should_generate_mermaid(instructions, report):
+                logger.info("[REPORT] Considering Mermaid diagram generation")
                 diagram = await generate_mermaid_diagram(instructions, detailed_analysis, gemini_rotator, nvidia_rotator)
                 if diagram:
-                    # Prepend a Diagrams section
                     report = ("## Diagrams\n\n" + "```mermaid\n" + diagram.strip() + "\n```\n\n" + report)
+                else:
+                    logger.info("[REPORT] Mermaid generation returned empty diagram")
         except Exception as me:
             logger.warning(f"[REPORT] Mermaid generation skipped: {me}")
         

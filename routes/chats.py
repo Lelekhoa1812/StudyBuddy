@@ -64,20 +64,31 @@ async def get_chat_history(user_id: str, project_id: str, session_id: str = None
     
     messages = []
     for message in messages_cursor:
-        # Skip messages that don't have required fields
-        if not all(key in message for key in ["user_id", "project_id", "role", "content", "timestamp"]):
-            continue
+        try:
+            # Skip messages that don't have required fields
+            required_fields = ["user_id", "project_id", "role", "content", "timestamp"]
+            if not all(key in message for key in required_fields):
+                logger.warning(f"[CHAT] Skipping message with missing fields: {list(message.keys())}")
+                continue
             
-        messages.append(ChatMessageResponse(
-            user_id=message["user_id"],
-            project_id=message["project_id"],
-            role=message["role"],
-            content=message["content"],
-            timestamp=message["timestamp"],
-            created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"]),
-            sources=message.get("sources"),
-            is_report=bool(message.get("is_report", False))
-        ))
+            # Additional validation for role field
+            if message["role"] not in ["user", "assistant"]:
+                logger.warning(f"[CHAT] Skipping message with invalid role: {message.get('role', 'None')}")
+                continue
+                
+            messages.append(ChatMessageResponse(
+                user_id=message["user_id"],
+                project_id=message["project_id"],
+                role=message["role"],
+                content=message["content"],
+                timestamp=message["timestamp"],
+                created_at=message["created_at"].isoformat() if isinstance(message["created_at"], datetime) else str(message["created_at"]),
+                sources=message.get("sources"),
+                is_report=bool(message.get("is_report", False))
+            ))
+        except Exception as e:
+            logger.error(f"[CHAT] Error processing message: {e}, message keys: {list(message.keys())}")
+            continue
     
     return ChatHistoryResponse(messages=messages)
 

@@ -791,7 +791,8 @@
       replaceTarget.replaceWith(wrapper);
       try {
         if (isV10) {
-          const out = await window.mermaid.render(id + '-svg', graph);
+          // Pass wrapper as container to avoid document.createElementNS undefined errors
+          const out = await window.mermaid.render(id + '-svg', graph, wrapper);
           if (out && out.svg) {
             wrapper.innerHTML = out.svg;
             if (out.bindFunctions) { out.bindFunctions(wrapper); }

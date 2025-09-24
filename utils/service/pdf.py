@@ -441,8 +441,8 @@ def _format_inline_markdown(text: str) -> str:
     # Strikethrough (~~text~~)
     text = re.sub(r'~~(.*?)~~', r'<strike>\1</strike>', text)
     
-    # Links [text](url) - convert to clickable text
-    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'<link href="\1">\1</link>', text)
+    # Links [text](url) - convert to clickable text (correct groups)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<link href="\2">\1</link>', text)
     
     # Line breaks
     text = text.replace('\n', '<br/>')
@@ -696,7 +696,17 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
             story.append(Spacer(1, 12))
             
             # Format references in IEEE style using NVIDIA API
-            ieee_references = await _format_references_ieee(sources)
+            try:
+                ieee_references = await _format_references_ieee(sources)
+            except Exception as _ie:
+                logger.warning(f"[PDF] Reference formatting failed, falling back: {_ie}")
+                ieee_references = []
+                for i, source in enumerate(sources, 1):
+                    if source.get("kind") == "web":
+                        ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Web Source')}\", {source.get('url', '')}, accessed: {datetime.now().strftime('%B %d, %Y')}."
+                    else:
+                        ref = f"[{i}] {source.get('topic_name', 'Unknown')}, \"{source.get('filename', 'Document')}\", Document, {datetime.now().year}."
+                    ieee_references.append(ref)
             for ref in ieee_references:
                 story.append(Paragraph(ref, normal_style))
                 story.append(Spacer(1, 6))
@@ -716,4 +726,5 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
         raise HTTPException(500, detail="PDF generation not available. Please install reportlab.")
     except Exception as e:
         logger.error(f"[PDF] Failed to generate PDF: {e}")
-        raise HTTPException(500, detail=f"Failed to generate PDF: {str(e)}")
+        # Keep error generic for client; avoid leaking internals
+        raise HTTPException(500, detail="Failed to generate PDF")

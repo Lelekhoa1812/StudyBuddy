@@ -193,6 +193,61 @@
             </div>
           </section>
 
+          <!-- Analytics Section -->
+          <section class="card reveal" id="analytics-section" style="display:none;">
+            <div class="card-header">
+              <h2>📊 Analytics Dashboard</h2>
+              <p>Track your usage of AI models and agents</p>
+            </div>
+            <div class="analytics-content">
+              <div class="analytics-controls">
+                <div class="analytics-period">
+                  <label for="analytics-period">Time Period:</label>
+                  <select id="analytics-period" class="analytics-select">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                  </select>
+                </div>
+                <button id="refresh-analytics" class="btn-primary">Refresh Data</button>
+              </div>
+              
+              <div class="analytics-grid">
+                <!-- Model Usage -->
+                <div class="analytics-card">
+                  <h3>🤖 Model Usage</h3>
+                  <div class="analytics-chart" id="model-usage-chart">
+                    <div class="loading-spinner">Loading...</div>
+                  </div>
+                </div>
+                
+                <!-- Agent Usage -->
+                <div class="analytics-card">
+                  <h3>🔧 Agent Usage</h3>
+                  <div class="analytics-chart" id="agent-usage-chart">
+                    <div class="loading-spinner">Loading...</div>
+                  </div>
+                </div>
+                
+                <!-- Daily Trends -->
+                <div class="analytics-card analytics-wide">
+                  <h3>📈 Daily Usage Trends</h3>
+                  <div class="analytics-chart" id="daily-trends-chart">
+                    <div class="loading-spinner">Loading...</div>
+                  </div>
+                </div>
+                
+                <!-- Usage Summary -->
+                <div class="analytics-card">
+                  <h3>📋 Usage Summary</h3>
+                  <div class="analytics-summary" id="usage-summary">
+                    <div class="loading-spinner">Loading...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- Chat Section -->
           <section class="card reveal" id="chat-section">
             <div class="card-header">
@@ -380,5 +435,6 @@
   <script src="/static/projects.js"></script>
   <script src="/static/script.js"></script>
   <script src="/static/sessions.js"></script>
+  <script src="/static/analytics.js"></script>
 </body>
 </html>

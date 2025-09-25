@@ -10,6 +10,7 @@ from utils.service.common import trim_text
 from .search import build_web_context
 # Removed: enhance_question_with_memory - now handled by conversation manager
 from utils.api.router import select_model, generate_answer_with_model
+from utils.analytics import get_analytics_tracker
 
 
 @app.post("/chat/save", response_model=MessageResponse)
@@ -708,6 +709,24 @@ async def _chat_impl(
         update_chat_status(session_id, "generating", "Generating answer...", 80)
     
     try:
+        # Track model usage for analytics
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=selection["model"],
+                provider=selection["provider"],
+                context="chat",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="chat",
+                action="generate_answer",
+                context="chat",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+        
         answer = await generate_answer_with_model(
             selection=selection,
             system_prompt=system_prompt,
@@ -888,6 +907,24 @@ async def chat_with_search(
     selection = select_model(question=question, context=doc_context)
     logger.info(f"[CHAT] Generating web-augmented answer with {selection['provider']} {selection['model']}")
     try:
+        # Track model usage for analytics
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=selection["model"],
+                provider=selection["provider"],
+                context="chat_web_augmented",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="chat",
+                action="generate_web_augmented_answer",
+                context="chat_web_augmented",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+        
         answer = await generate_answer_with_model(
             selection=selection,
             system_prompt=system_prompt,

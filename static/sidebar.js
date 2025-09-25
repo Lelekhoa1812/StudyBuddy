@@ -149,7 +149,10 @@
         showSection('chat');
         break;
       case 'analytics':
-        // Could show usage analytics or insights
+        showSection('analytics');
+        if (window.__sb_load_analytics) {
+          window.__sb_load_analytics();
+        }
         break;
       case 'settings':
         // Could show user settings or preferences
@@ -166,14 +169,33 @@
     const upload = document.getElementById('upload-section');
     const chat = document.getElementById('chat-section');
     const files = document.getElementById('files-section');
+    const analytics = document.getElementById('analytics-section');
+    
     if (!upload || !chat || !files) return;
-    // Show upload section for projects, files section for files, chat section for chat
-    upload.style.display = name === 'upload' ? 'block' : 'none';
-    chat.style.display = name === 'chat' ? 'block' : 'none';
-    files.style.display = name === 'files' ? 'block' : 'none';
-    // Enable chat functionality when chat section is visible
-    if (name === 'chat' && window.__sb_enable_chat) {
-      window.__sb_enable_chat();
+    
+    // Hide all sections first
+    upload.style.display = 'none';
+    chat.style.display = 'none';
+    files.style.display = 'none';
+    if (analytics) analytics.style.display = 'none';
+    
+    // Show selected section
+    switch (name) {
+      case 'upload':
+        upload.style.display = 'block';
+        break;
+      case 'chat':
+        chat.style.display = 'block';
+        if (window.__sb_enable_chat) {
+          window.__sb_enable_chat();
+        }
+        break;
+      case 'files':
+        files.style.display = 'block';
+        break;
+      case 'analytics':
+        if (analytics) analytics.style.display = 'block';
+        break;
     }
   }
 

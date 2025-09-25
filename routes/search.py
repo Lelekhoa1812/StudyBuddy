@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Tuple
 from helpers.setup import logger, embedder, gemini_rotator, nvidia_rotator
 from utils.api.router import select_model, generate_answer_with_model, qwen_chat_completion, nvidia_large_chat_completion
 from utils.service.summarizer import llama_summarize
+from utils.analytics import get_analytics_tracker
 
 
 async def extract_search_keywords(user_query: str, nvidia_rotator) -> List[str]:
@@ -27,6 +28,17 @@ Focus on:
 Return only the keywords, separated by spaces, no other text."""
         
         user_prompt = f"User query: {user_query}\n\nExtract search keywords:"
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id="system",  # Search is system-level
+                agent_name="search",
+                action="extract_keywords",
+                context="web_search",
+                metadata={"query": user_query}
+            )
         
         # Use NVIDIA Large for better keyword extraction
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)

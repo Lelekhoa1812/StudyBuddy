@@ -11,6 +11,7 @@ from utils.api.rotator import APIKeyRotator
 from utils.ingestion.caption import BlipCaptioner
 from utils.rag.embeddings import EmbeddingClient
 from utils.rag.rag import RAGStore, ensure_indexes
+from utils.analytics import init_analytics
 
 
 # ────────────────────────────── App Setup ──────────────────────────────
@@ -49,6 +50,10 @@ try:
     logger.info("[APP] MongoDB connection successful")
     ensure_indexes(rag)
     logger.info("[APP] MongoDB indexes ensured")
+    
+    # Initialize analytics tracker
+    init_analytics(rag.client, os.getenv("MONGO_DB", "studybuddy"))
+    logger.info("[APP] Analytics tracker initialized")
 except Exception as e:
     logger.error(f"[APP] Failed to initialize MongoDB/RAG store: {str(e)}")
     logger.error(f"[APP] MONGO_URI: {os.getenv('MONGO_URI', 'Not set')}")

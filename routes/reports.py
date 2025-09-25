@@ -10,6 +10,7 @@ from .search import build_web_context
 from helpers.models import ReportResponse, StatusUpdateResponse
 from utils.service.common import trim_text
 from utils.api.router import select_model, generate_answer_with_model
+from utils.analytics import get_analytics_tracker
 from helpers.coder import generate_code_artifacts, extract_structured_code
 from helpers.diagram import should_generate_mermaid, generate_mermaid_diagram
 
@@ -123,6 +124,18 @@ async def generate_report(
     # Step 1: Chain of Thought Planning with NVIDIA
     logger.info("[REPORT] Starting CoT planning phase")
     update_report_status(session_id, "planning", "Planning action...", 25)
+    
+    # Track report agent usage
+    tracker = get_analytics_tracker()
+    if tracker:
+        await tracker.track_agent_usage(
+            user_id=user_id,
+            agent_name="report",
+            action="generate_report",
+            context="report_generation",
+            metadata={"project_id": project_id, "session_id": session_id, "filename": filename}
+        )
+    
     # Use enhanced instructions for better CoT planning
     cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator, gemini_rotator)
     

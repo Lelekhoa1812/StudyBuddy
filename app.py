@@ -11,6 +11,7 @@ import routes.reports as _routes_report
 import routes.chats as _routes_chat
 import routes.sessions as _routes_sessions
 import routes.health as _routes_health
+import routes.analytics as _routes_analytics
 
 # Local dev
 # if __name__ == "__main__":

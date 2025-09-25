@@ -68,7 +68,7 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                     try:
                         from reportlab.platypus import Image, Spacer
                         img_bytes = _render_mermaid_png('\n'.join(code_lines))
-                        if img_bytes:
+                        if img_bytes and len(img_bytes) > 0:
                             import io
                             img = Image(io.BytesIO(img_bytes))
                             # Fit within page width (~6 inches after margins)
@@ -81,8 +81,23 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                             story.append(Spacer(1, 12))
                             i += 1
                             continue
+                        else:
+                            logger.warning("[PDF] Mermaid render returned empty image, falling back to code block")
                     except Exception as me:
                         logger.warning(f"[PDF] Mermaid render failed, falling back to code block: {me}")
+                    
+                    # Fallback: render as code block with mermaid syntax
+                    from reportlab.platypus import XPreformatted, Paragraph
+                    raw_code = '\n'.join(code_lines)
+                    raw_code = raw_code.replace('\t', '    ')
+                    raw_code = raw_code.replace('\r\n', '\n').replace('\r', '\n')
+                    raw_code = re.sub(r'[^\x09\x0A\x20-\x7E]', '', raw_code)
+                    escaped = raw_code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    lang_header = f"<font color='#9aa5b1' size='8'>[MERMAID DIAGRAM]</font>"
+                    story.append(Paragraph(lang_header, code_style))
+                    story.append(XPreformatted(escaped, code_style))
+                    i += 1
+                    continue
 
                 from reportlab.platypus import XPreformatted, Paragraph
                 # Join and sanitize code content: expand tabs, remove control chars that render as squares
@@ -448,24 +463,25 @@ def _format_inline_markdown(text: str) -> str:
     text = text.replace('<', '&lt;')
     text = text.replace('>', '&gt;')
     
-    # Bold text (**text** or __text__)
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
-    text = re.sub(r'__(.*?)__', r'<b>\1</b>', text)
+    # Process in order of precedence to avoid nested tag conflicts
+    # 1. Inline code (`code`) - highest precedence, no nested formatting
+    text = re.sub(r'`([^`]+)`', r'<font name="Courier" size="9">\1</font>', text)
     
-    # Italic text (*text* or _text_)
-    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
-    text = re.sub(r'_(.*?)_', r'<i>\1</i>', text)
+    # 2. Bold text (**text** or __text__) - but not inside code blocks
+    text = re.sub(r'(?<!`)\*\*([^*]+)\*\*(?!`)', r'<b>\1</b>', text)
+    text = re.sub(r'(?<!`)__(?!_)([^_]+)__(?!`)', r'<b>\1</b>', text)
     
-    # Inline code (`code`)
-    text = re.sub(r'`(.*?)`', r'<font name="Courier" size="9">\1</font>', text)
+    # 3. Italic text (*text* or _text_) - but not inside code blocks or bold
+    text = re.sub(r'(?<!`)(?<!\*)\*([^*]+)\*(?!\*)(?!`)', r'<i>\1</i>', text)
+    text = re.sub(r'(?<!`)(?<!_)_([^_]+)_(?!_)(?!`)', r'<i>\1</i>', text)
     
-    # Strikethrough (~~text~~)
-    text = re.sub(r'~~(.*?)~~', r'<strike>\1</strike>', text)
+    # 4. Strikethrough (~~text~~) - but not inside other formatting
+    text = re.sub(r'~~([^~]+)~~', r'<strike>\1</strike>', text)
     
-    # Links [text](url) - convert to clickable text (correct groups)
+    # 5. Links [text](url) - convert to clickable text
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<link href="\2">\1</link>', text)
     
-    # Line breaks
+    # 6. Line breaks
     text = text.replace('\n', '<br/>')
     
     return text
@@ -540,19 +556,46 @@ def _render_mermaid_png(mermaid_text: str) -> bytes:
         import json
         import urllib.request
         import urllib.error
+        
+        # Validate and clean mermaid content
+        if not mermaid_text or not mermaid_text.strip():
+            logger.warning("[PDF] Empty mermaid content")
+            return b""
+        
+        # Clean the mermaid text - remove any potential issues
+        cleaned_text = mermaid_text.strip()
+        
+        # Basic mermaid syntax validation
+        if not cleaned_text.startswith(('graph', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gantt', 'pie', 'gitgraph')):
+            logger.warning(f"[PDF] Invalid mermaid diagram type: {cleaned_text[:50]}...")
+            return b""
+        
         # Kroki POST API for mermaid -> png
-        data = json.dumps({"diagram_source": mermaid_text}).encode("utf-8")
+        data = json.dumps({"diagram_source": cleaned_text}).encode("utf-8")
         req = urllib.request.Request(
             url="https://kroki.io/mermaid/png",
             data=data,
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        
+        with urllib.request.urlopen(req, timeout=15) as resp:
             if resp.status == 200:
                 return resp.read()
+            else:
+                logger.warning(f"[PDF] Kroki returned status {resp.status}")
+                return b""
+                
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            logger.warning(f"[PDF] Kroki mermaid syntax error (400): {e.reason}")
+        else:
+            logger.warning(f"[PDF] Kroki HTTP error {e.code}: {e.reason}")
+    except urllib.error.URLError as e:
+        logger.warning(f"[PDF] Kroki connection error: {e.reason}")
     except Exception as e:
         logger.warning(f"[PDF] Kroki mermaid render error: {e}")
+    
     return b""
 
 

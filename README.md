@@ -11,7 +11,8 @@ short_description: Ed-Assistant summary your learning journey with Agentic RAG
 ---
 
 ### StudyBuddy (EdSummariser)
-[Live demo](https://binkhoale1812-edsummariser.hf.space)
+[Live demo](https://binkhoale1812-edsummariser.hf.space)  
+![System Architecture](diagram.svg)
 
 StudyBuddy is an end-to-end Retrieval-Augmented Generation (RAG) app for learning from your own documents. 
 

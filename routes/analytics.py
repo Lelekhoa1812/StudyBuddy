@@ -6,15 +6,17 @@ Provides endpoints for retrieving user and global analytics data.
 """
 
 from fastapi import HTTPException, Query
-from typing import Optional
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 from helpers.setup import app, logger
 from utils.analytics import get_analytics_tracker
-from helpers.models import BaseResponse
 
 
-class AnalyticsResponse(BaseResponse):
+class AnalyticsResponse(BaseModel):
     """Response model for analytics data."""
-    pass
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    message: str
 
 
 @app.get("/analytics/user", response_model=AnalyticsResponse)

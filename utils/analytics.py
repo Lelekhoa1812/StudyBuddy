@@ -50,7 +50,7 @@ class AnalyticsTracker:
                 "metadata": metadata or {}
             }
             
-            await self.usage_collection.insert_one(usage_record)
+            self.usage_collection.insert_one(usage_record)
             logger.debug(f"[ANALYTICS] Tracked model usage: {model_name} for user {user_id}")
             
         except Exception as e:
@@ -71,7 +71,7 @@ class AnalyticsTracker:
                 "metadata": metadata or {}
             }
             
-            await self.usage_collection.insert_one(usage_record)
+            self.usage_collection.insert_one(usage_record)
             logger.debug(f"[ANALYTICS] Tracked agent usage: {agent_name} for user {user_id}")
             
         except Exception as e:
@@ -210,7 +210,7 @@ class AnalyticsTracker:
         """Clean up old analytics data to prevent database bloat."""
         try:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
-            result = await self.usage_collection.delete_many({"timestamp": {"$lt": cutoff_time}})
+            result = self.usage_collection.delete_many({"timestamp": {"$lt": cutoff_time}})
             logger.info(f"[ANALYTICS] Cleaned up {result.deleted_count} old records")
             return result.deleted_count
         except Exception as e:

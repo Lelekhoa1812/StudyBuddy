@@ -129,41 +129,62 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
                 return "I couldn't parse the model response."
 
     elif provider == "nvidia":
-        # Many NVIDIA endpoints are OpenAI-compatible. Adjust if using a different path.
-        key = nvidia_rotator.get_key() or ""
-        url = "https://integrate.api.nvidia.com/v1/chat/completions"
-        payload = {
-            "model": model,
-            "temperature": 0.2,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-        }
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
-        
-        logger.info(f"[ROUTER] NVIDIA API call - Model: {model}, Key present: {bool(key)}")
-        logger.info(f"[ROUTER] System prompt length: {len(system_prompt)}, User prompt length: {len(user_prompt)}")
-        
-        data = await robust_post_json(url, headers, payload, nvidia_rotator)
-        
-        logger.info(f"[ROUTER] NVIDIA API response type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+        # Try NVIDIA small model first
         try:
+            key = nvidia_rotator.get_key() or ""
+            url = "https://integrate.api.nvidia.com/v1/chat/completions"
+            payload = {
+                "model": model,
+                "temperature": 0.2,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+            }
+            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
+            
+            logger.info(f"[ROUTER] NVIDIA API call - Model: {model}, Key present: {bool(key)}")
+            logger.info(f"[ROUTER] System prompt length: {len(system_prompt)}, User prompt length: {len(user_prompt)}")
+            
+            data = await robust_post_json(url, headers, payload, nvidia_rotator)
+            
+            logger.info(f"[ROUTER] NVIDIA API response type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
             content = data["choices"][0]["message"]["content"]
             if not content or content.strip() == "":
                 logger.warning(f"Empty content from NVIDIA model: {data}")
-                return "I received an empty response from the model."
+                raise Exception("Empty content from NVIDIA")
             return content
         except Exception as e:
-            logger.warning(f"Unexpected NVIDIA response: {data}, error: {e}")
-            return "I couldn't parse the model response."
+            logger.warning(f"NVIDIA model {model} failed: {e}. Attempting fallback...")
+            
+            # Fallback: NVIDIA_SMALL → Try a different NVIDIA model or basic response
+            if model == NVIDIA_SMALL:
+                logger.info(f"Falling back from {model} to basic response")
+                return "I'm experiencing technical difficulties with the AI model. Please try again later."
+            else:
+                logger.error(f"No fallback defined for NVIDIA model: {model}")
+                return "I couldn't parse the model response."
 
     elif provider == "qwen":
-        # Use Qwen for reasoning tasks
-        return await qwen_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+        # Use Qwen for reasoning tasks with fallback
+        try:
+            return await qwen_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+        except Exception as e:
+            logger.warning(f"Qwen model failed: {e}. Attempting fallback...")
+            # Fallback: Qwen → NVIDIA_SMALL
+            logger.info("Falling back from Qwen to NVIDIA_SMALL")
+            fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
     elif provider == "nvidia_large":
-        # Use NVIDIA Large (GPT-OSS) for hard/long context tasks
-        return await nvidia_large_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+        # Use NVIDIA Large (GPT-OSS) for hard/long context tasks with fallback
+        try:
+            return await nvidia_large_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+        except Exception as e:
+            logger.warning(f"NVIDIA_LARGE model failed: {e}. Attempting fallback...")
+            # Fallback: NVIDIA_LARGE → NVIDIA_SMALL
+            logger.info("Falling back from NVIDIA_LARGE to NVIDIA_SMALL")
+            fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
 
     return "Unsupported provider."
 

@@ -20,11 +20,17 @@
     setupEventListeners();
     // Load analytics when section becomes visible
     document.addEventListener('sectionChanged', (event) => {
+      console.log('[ANALYTICS] Section changed to:', event.detail.section);
       if (event.detail.section === 'analytics') {
         isAnalyticsVisible = true;
-        loadAnalytics();
+        console.log('[ANALYTICS] Analytics section is now visible');
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+          loadAnalytics();
+        }, 100);
       } else {
         isAnalyticsVisible = false;
+        console.log('[ANALYTICS] Analytics section is now hidden');
       }
     });
   }
@@ -48,25 +54,50 @@
   }
   
   async function loadAnalytics() {
-    if (!isAnalyticsVisible) return;
+    console.log('[ANALYTICS] loadAnalytics called, isAnalyticsVisible:', isAnalyticsVisible);
+    
+    if (!isAnalyticsVisible) {
+      console.log('[ANALYTICS] Analytics not visible, skipping load');
+      return;
+    }
     
     const user = window.__sb_get_user();
+    console.log('[ANALYTICS] User:', user);
+    
     if (!user) {
       showAnalyticsError('Please sign in to view analytics');
       return;
     }
     
     const period = analyticsPeriod ? analyticsPeriod.value : '30';
+    console.log('[ANALYTICS] Loading analytics for period:', period);
     
     try {
       showAnalyticsLoading();
       
-      const response = await fetch(`/analytics/user?user_id=${encodeURIComponent(user.user_id)}&days=${period}`);
+      // First test if analytics system is working
+      console.log('[ANALYTICS] Testing analytics system...');
+      const testResponse = await fetch('/analytics/test');
+      const testData = await testResponse.json();
+      console.log('[ANALYTICS] Test response:', testData);
+      
+      if (!testData.success) {
+        throw new Error(`Analytics system not working: ${testData.message}`);
+      }
+      
+      const url = `/analytics/user?user_id=${encodeURIComponent(user.user_id)}&days=${period}`;
+      console.log('[ANALYTICS] Fetching from URL:', url);
+      
+      const response = await fetch(url);
+      console.log('[ANALYTICS] Response status:', response.status);
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
+      console.log('[ANALYTICS] Response data:', data);
+      
       if (data.success) {
         currentAnalyticsData = data.data;
         renderAnalytics(data.data);
@@ -81,7 +112,12 @@
   }
   
   function showAnalyticsLoading() {
-    const loadingHtml = '<div class="loading-spinner">Loading analytics...</div>';
+    const loadingHtml = `
+      <div class="analytics-loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading analytics...</div>
+      </div>
+    `;
     if (modelUsageChart) modelUsageChart.innerHTML = loadingHtml;
     if (agentUsageChart) agentUsageChart.innerHTML = loadingHtml;
     if (dailyTrendsChart) dailyTrendsChart.innerHTML = loadingHtml;
@@ -282,11 +318,17 @@
   window.__sb_show_analytics_section = () => {
     if (analyticsSection) {
       analyticsSection.style.display = 'block';
+      isAnalyticsVisible = true;
+      // Trigger analytics loading
+      setTimeout(() => {
+        loadAnalytics();
+      }, 100);
     }
   };
   window.__sb_hide_analytics_section = () => {
     if (analyticsSection) {
       analyticsSection.style.display = 'none';
+      isAnalyticsVisible = false;
     }
   };
 })();

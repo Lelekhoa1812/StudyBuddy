@@ -43,6 +43,33 @@ async def get_user_analytics(
         raise HTTPException(500, detail=f"Failed to retrieve analytics: {str(e)}")
 
 
+@app.get("/analytics/test", response_model=AnalyticsResponse)
+async def test_analytics():
+    """Test endpoint to verify analytics system is working."""
+    try:
+        tracker = get_analytics_tracker()
+        if not tracker:
+            return AnalyticsResponse(
+                success=False,
+                data=None,
+                message="Analytics tracker not initialized"
+            )
+        
+        return AnalyticsResponse(
+            success=True,
+            data={"status": "analytics_system_working"},
+            message="Analytics system is operational"
+        )
+        
+    except Exception as e:
+        logger.error(f"[ANALYTICS] Test endpoint error: {e}")
+        return AnalyticsResponse(
+            success=False,
+            data=None,
+            message=f"Analytics test failed: {str(e)}"
+        )
+
+
 @app.get("/analytics/global", response_model=AnalyticsResponse)
 async def get_global_analytics(
     days: int = Query(30, description="Number of days to include in analytics", ge=1, le=365)

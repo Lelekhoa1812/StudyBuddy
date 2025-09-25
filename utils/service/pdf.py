@@ -13,7 +13,7 @@ from utils.logger import get_logger
 logger = get_logger("PDF", __name__)
 
 
-def _parse_markdown_content(content: str, heading1_style, heading2_style, heading3_style, normal_style, code_style):
+async def _parse_markdown_content(content: str, heading1_style, heading2_style, heading3_style, normal_style, code_style):
     """
     Enhanced markdown parser that properly handles bold/italic formatting
     """
@@ -63,11 +63,15 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                 i += 1
             
             if code_lines:
-                # Mermaid diagrams → render via Kroki PNG for PDF
+                # Mermaid diagrams → render via Kroki PNG for PDF with retry logic
                 if language.lower() == 'mermaid':
                     try:
                         from reportlab.platypus import Image, Spacer
-                        img_bytes = _render_mermaid_png('\n'.join(code_lines))
+                        mermaid_code = '\n'.join(code_lines)
+                        # Use retry logic from diagram.py
+                        from helpers.diagram import _render_mermaid_with_retry
+                        img_bytes = await _render_mermaid_with_retry(mermaid_code)
+                        
                         if img_bytes and len(img_bytes) > 0:
                             import io
                             img = Image(io.BytesIO(img_bytes))
@@ -82,9 +86,9 @@ def _parse_markdown_content(content: str, heading1_style, heading2_style, headin
                             i += 1
                             continue
                         else:
-                            logger.warning("[PDF] Mermaid render returned empty image, falling back to code block")
+                            logger.warning("[PDF] Mermaid render returned empty image after retries, falling back to code block")
                     except Exception as me:
-                        logger.warning(f"[PDF] Mermaid render failed, falling back to code block: {me}")
+                        logger.warning(f"[PDF] Mermaid render failed after retries, falling back to code block: {me}")
                     
                     # Fallback: render as code block with mermaid syntax
                     from reportlab.platypus import XPreformatted, Paragraph
@@ -828,12 +832,12 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
         story = []
         
         # Add title
-        story.append(Paragraph("Study Report", title_style))
+        story.append(Paragraph("StudyBuddy Report", title_style))
         story.append(Paragraph(f"<i>Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</i>", normal_style))
         story.append(Spacer(1, 20))
         
         # Enhanced markdown parser with proper formatting
-        story.extend(_parse_markdown_content(report_content, heading1_style, heading2_style, heading3_style, normal_style, code_style))
+        story.extend(await _parse_markdown_content(report_content, heading1_style, heading2_style, heading3_style, normal_style, code_style))
         
         # Add references section if sources provided
         if sources:

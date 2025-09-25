@@ -821,31 +821,89 @@
     const isV10 = !!(window.mermaid && window.mermaid.render && typeof window.mermaid.render === 'function');
     for (let idx = 0; idx < mermaidBlocks.length; idx++) {
       const codeBlock = mermaidBlocks[idx];
-      const graph = codeBlock.textContent || '';
+      let graph = codeBlock.textContent || '';
       const wrapper = document.createElement('div');
       const id = `mermaid-${Date.now()}-${idx}`;
       wrapper.className = 'mermaid';
       wrapper.id = id;
       const replaceTarget = codeBlock.parentElement && codeBlock.parentElement.tagName.toLowerCase() === 'pre' ? codeBlock.parentElement : codeBlock;
       replaceTarget.replaceWith(wrapper);
-      try {
-        if (isV10) {
-          // Pass wrapper as container to avoid document.createElementNS undefined errors
-          const out = await window.mermaid.render(id + '-svg', graph, wrapper);
-          if (out && out.svg) {
-            wrapper.innerHTML = out.svg;
-            if (out.bindFunctions) { out.bindFunctions(wrapper); }
+      
+      // Try to render with retry logic
+      let renderSuccess = false;
+      let attempt = 0;
+      const maxAttempts = 3;
+      
+      while (!renderSuccess && attempt < maxAttempts) {
+        try {
+          if (isV10) {
+            // Pass wrapper as container to avoid document.createElementNS undefined errors
+            const out = await window.mermaid.render(id + '-svg', graph, wrapper);
+            if (out && out.svg) {
+              wrapper.innerHTML = out.svg;
+              if (out.bindFunctions) { out.bindFunctions(wrapper); }
+              renderSuccess = true;
+            }
+          } else if (window.mermaid && window.mermaid.init) {
+            // Legacy fallback
+            wrapper.textContent = graph;
+            window.mermaid.init(undefined, wrapper);
+            renderSuccess = true;
           }
-        } else if (window.mermaid && window.mermaid.init) {
-          // Legacy fallback
-          wrapper.textContent = graph;
-          window.mermaid.init(undefined, wrapper);
+        } catch (e) {
+          console.warn(`Mermaid render failed (attempt ${attempt + 1}):`, e);
+          
+          // If this isn't the last attempt, try to fix the mermaid code using AI
+          if (attempt < maxAttempts - 1) {
+            try {
+              console.log('Attempting to fix Mermaid syntax using AI...');
+              const fixedCode = await fixMermaidWithAI(graph, e.message || e.toString());
+              if (fixedCode && fixedCode !== graph) {
+                graph = fixedCode;
+                console.log('AI provided fixed Mermaid code, retrying...');
+              } else {
+                console.warn('AI could not provide fixed Mermaid code');
+                break;
+              }
+            } catch (aiError) {
+              console.warn('AI Mermaid fix failed:', aiError);
+              break;
+            }
+          }
         }
-      } catch (e) {
-        console.warn('Mermaid render failed:', e);
+        attempt++;
+      }
+      
+      // If all attempts failed, show the original code
+      if (!renderSuccess) {
+        console.warn('All Mermaid render attempts failed, showing original code');
         wrapper.textContent = graph;
       }
     }
+  }
+
+  async function fixMermaidWithAI(mermaidCode, errorMessage) {
+    try {
+      const formData = new FormData();
+      formData.append('mermaid_code', mermaidCode);
+      formData.append('error_message', errorMessage);
+      
+      const response = await fetch('/mermaid/fix', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.was_fixed) {
+          console.log('Mermaid syntax fixed by AI');
+          return result.fixed_code;
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to fix Mermaid with AI:', error);
+    }
+    return null;
   }
 
   // Expose markdown-aware appenders for use after refresh (projects.js)
@@ -873,23 +931,41 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'code-block-wrapper';
 
-      // Create header with language and copy button
+      // Create header with language and action buttons
       const header = document.createElement('div');
       header.className = 'code-block-header';
+      
+      // Check if code is long enough to warrant an expand button
+      const codeText = codeBlock.textContent || '';
+      const isLongCode = codeText.split('\n').length > 15 || codeText.length > 500;
+      
       header.innerHTML = `
         <span class="code-block-language">${language}</span>
-        <button class="copy-code-btn" data-code-index="${index}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          Copy
-        </button>
+        <div class="code-block-actions">
+          ${isLongCode ? `
+            <button class="expand-code-btn" data-code-index="${index}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+              </svg>
+              Expand
+            </button>
+          ` : ''}
+          <button class="copy-code-btn" data-code-index="${index}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+        </div>
       `;
 
       // Create content wrapper and move the original <pre><code> inside (preserves highlighting)
       const content = document.createElement('div');
       content.className = 'code-block-content';
+      if (isLongCode) {
+        content.classList.add('collapsed');
+      }
       pre.dataset.sbWrapped = '1';
       content.appendChild(pre);
 
@@ -916,10 +992,40 @@
       // If messageDiv contains multiple elements, just append wrapper now
       messageDiv.appendChild(wrapper);
 
-      // Add click handler for copy button
+      // Add click handlers for copy and expand buttons
       const copyBtn = wrapper.querySelector('.copy-code-btn');
-      copyBtn.addEventListener('click', () => copyCodeToClipboard(codeBlock.textContent, copyBtn));
+      const expandBtn = wrapper.querySelector('.expand-code-btn');
+      
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => copyCodeToClipboard(codeBlock.textContent, copyBtn));
+      }
+      
+      if (expandBtn) {
+        expandBtn.addEventListener('click', () => toggleCodeExpansion(content, expandBtn));
+      }
     });
+  }
+
+  function toggleCodeExpansion(content, button) {
+    const isCollapsed = content.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+      content.classList.remove('collapsed');
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+        Collapse
+      `;
+    } else {
+      content.classList.add('collapsed');
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+        Expand
+      `;
+    }
   }
 
   function copyCodeToClipboard(code, button) {

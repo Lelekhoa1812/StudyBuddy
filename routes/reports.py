@@ -1296,3 +1296,32 @@ Return the renumbered headings in the format: "level: new_number: heading_text" 
         return report
 
 
+@app.post("/mermaid/fix")
+async def fix_mermaid_syntax(
+    mermaid_code: str = Form(...),
+    error_message: str = Form("")
+):
+    """
+    Fix Mermaid diagram syntax using AI for UI rendering.
+    """
+    try:
+        from helpers.diagram import fix_mermaid_syntax_for_ui
+        
+        logger.info(f"[MERMAID] Fixing Mermaid syntax for UI")
+        fixed_code = await fix_mermaid_syntax_for_ui(mermaid_code, error_message)
+        
+        return {
+            "success": True,
+            "fixed_code": fixed_code,
+            "was_fixed": fixed_code != mermaid_code
+        }
+        
+    except Exception as e:
+        logger.error(f"[MERMAID] Failed to fix Mermaid syntax: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "fixed_code": mermaid_code
+        }
+
+

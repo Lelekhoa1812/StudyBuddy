@@ -4,6 +4,7 @@
   const analyticsSection = document.getElementById('analytics-section');
   const analyticsPeriod = document.getElementById('analytics-period');
   const refreshAnalytics = document.getElementById('refresh-analytics');
+  const debugAnalytics = document.getElementById('debug-analytics');
   const modelUsageChart = document.getElementById('model-usage-chart');
   const agentUsageChart = document.getElementById('agent-usage-chart');
   const dailyTrendsChart = document.getElementById('daily-trends-chart');
@@ -18,6 +19,10 @@
   
   function init() {
     setupEventListeners();
+    
+    // Check if analytics section is already visible on page load
+    checkAnalyticsVisibility();
+    
     // Load analytics when section becomes visible
     document.addEventListener('sectionChanged', (event) => {
       console.log('[ANALYTICS] Section changed to:', event.detail.section);
@@ -33,6 +38,41 @@
         console.log('[ANALYTICS] Analytics section is now hidden');
       }
     });
+    
+    // Also listen for direct analytics section visibility changes
+    if (analyticsSection) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+            const isVisible = analyticsSection.style.display !== 'none' && analyticsSection.style.display !== '';
+            console.log('[ANALYTICS] Direct visibility change detected:', isVisible);
+            if (isVisible && !isAnalyticsVisible) {
+              isAnalyticsVisible = true;
+              setTimeout(() => {
+                loadAnalytics();
+              }, 100);
+            } else if (!isVisible) {
+              isAnalyticsVisible = false;
+            }
+          }
+        });
+      });
+      
+      observer.observe(analyticsSection, { attributes: true, attributeFilter: ['style'] });
+    }
+  }
+  
+  function checkAnalyticsVisibility() {
+    if (analyticsSection) {
+      const isVisible = analyticsSection.style.display !== 'none' && analyticsSection.style.display !== '';
+      console.log('[ANALYTICS] Initial visibility check:', isVisible);
+      if (isVisible) {
+        isAnalyticsVisible = true;
+        setTimeout(() => {
+          loadAnalytics();
+        }, 200);
+      }
+    }
   }
   
   function setupEventListeners() {
@@ -49,6 +89,19 @@
     if (refreshAnalytics) {
       refreshAnalytics.addEventListener('click', () => {
         loadAnalytics();
+      });
+    }
+    
+    // Debug button
+    if (debugAnalytics) {
+      debugAnalytics.addEventListener('click', () => {
+        console.log('[ANALYTICS] Debug button clicked');
+        console.log('[ANALYTICS] Current state:', {
+          isAnalyticsVisible,
+          analyticsSection: analyticsSection ? analyticsSection.style.display : 'not found',
+          user: window.__sb_get_user ? window.__sb_get_user() : 'not available'
+        });
+        forceLoadAnalytics();
       });
     }
   }
@@ -313,9 +366,18 @@
     usageSummary.innerHTML = html;
   }
   
+  // Manual trigger function for debugging
+  function forceLoadAnalytics() {
+    console.log('[ANALYTICS] Force loading analytics...');
+    isAnalyticsVisible = true;
+    loadAnalytics();
+  }
+  
   // Expose functions for external use
   window.__sb_load_analytics = loadAnalytics;
+  window.__sb_force_load_analytics = forceLoadAnalytics;
   window.__sb_show_analytics_section = () => {
+    console.log('[ANALYTICS] Showing analytics section...');
     if (analyticsSection) {
       analyticsSection.style.display = 'block';
       isAnalyticsVisible = true;
@@ -326,6 +388,7 @@
     }
   };
   window.__sb_hide_analytics_section = () => {
+    console.log('[ANALYTICS] Hiding analytics section...');
     if (analyticsSection) {
       analyticsSection.style.display = 'none';
       isAnalyticsVisible = false;

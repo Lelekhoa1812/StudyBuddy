@@ -94,25 +94,39 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
     model = selection["model"]
 
     if provider == "gemini":
-        key = gemini_rotator.get_key() or ""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        payload = {
-            "contents": [
-                {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}
-            ],
-            "generationConfig": {"temperature": 0.2}
-        }
-        headers = {"Content-Type": "application/json"}
-        data = await robust_post_json(url, headers, payload, gemini_rotator)
+        # Try Gemini first
         try:
+            key = gemini_rotator.get_key() or ""
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "contents": [
+                    {"role": "user", "parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}
+                ],
+                "generationConfig": {"temperature": 0.2}
+            }
+            headers = {"Content-Type": "application/json"}
+            data = await robust_post_json(url, headers, payload, gemini_rotator)
+            
             content = data["candidates"][0]["content"]["parts"][0]["text"]
             if not content or content.strip() == "":
                 logger.warning(f"Empty content from Gemini model: {data}")
-                return "I received an empty response from the model."
+                raise Exception("Empty content from Gemini")
             return content
         except Exception as e:
-            logger.warning(f"Unexpected Gemini response: {data}, error: {e}")
-            return "I couldn't parse the model response."
+            logger.warning(f"Gemini model {model} failed: {e}. Attempting fallback...")
+            
+            # Fallback logic: GEMINI_PRO/MED → NVIDIA_LARGE, GEMINI_SMALL → NVIDIA_SMALL
+            if model in [GEMINI_PRO, GEMINI_MED]:
+                logger.info(f"Falling back from {model} to NVIDIA_LARGE")
+                fallback_selection = {"provider": "nvidia_large", "model": NVIDIA_LARGE}
+                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+            elif model == GEMINI_SMALL:
+                logger.info(f"Falling back from {model} to NVIDIA_SMALL")
+                fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
+                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+            else:
+                logger.error(f"No fallback defined for Gemini model: {model}")
+                return "I couldn't parse the model response."
 
     elif provider == "nvidia":
         # Many NVIDIA endpoints are OpenAI-compatible. Adjust if using a different path.

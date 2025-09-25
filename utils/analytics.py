@@ -114,11 +114,12 @@ class AnalyticsTracker:
             # Daily usage trends
             daily_pipeline = [
                 {"$match": {"user_id": user_id, "timestamp": {"$gte": cutoff_time}}},
+                {"$addFields": {"date": {"$toDate": {"$multiply": ["$timestamp", 1000]}}}},
                 {"$group": {
                     "_id": {
-                        "year": {"$year": {"$dateFromTimestamp": {"$multiply": ["$timestamp", 1000]}}},
-                        "month": {"$month": {"$dateFromTimestamp": {"$multiply": ["$timestamp", 1000]}}},
-                        "day": {"$dayOfMonth": {"$dateFromTimestamp": {"$multiply": ["$timestamp", 1000]}}}
+                        "year": {"$year": "$date"},
+                        "month": {"$month": "$date"},
+                        "day": {"$dayOfMonth": "$date"}
                     },
                     "total_requests": {"$sum": 1},
                     "model_requests": {"$sum": {"$cond": [{"$eq": ["$type", "model"]}, 1, 0]}},
@@ -161,12 +162,20 @@ class AnalyticsTracker:
             model_pipeline = [
                 {"$match": {"type": "model", "timestamp": {"$gte": cutoff_time}}},
                 {"$group": {
-                    "_id": "$model_name",
+                    "_id": {
+                        "provider": "$provider",
+                        "model": "$model_name"
+                    },
                     "count": {"$sum": 1},
-                    "unique_users": {"$addToSet": "$user_id"},
-                    "provider": {"$first": "$provider"}
+                    "unique_users": {"$addToSet": "$user_id"}
                 }},
-                {"$addFields": {"unique_user_count": {"$size": "$unique_users"}}},
+                {"$project": {
+                    "_id": 0,
+                    "model_name": "$_id.model",
+                    "provider": "$_id.provider",
+                    "count": 1,
+                    "unique_user_count": {"$size": "$unique_users"}
+                }},
                 {"$sort": {"count": -1}}
             ]
             
@@ -176,12 +185,25 @@ class AnalyticsTracker:
             agent_pipeline = [
                 {"$match": {"type": "agent", "timestamp": {"$gte": cutoff_time}}},
                 {"$group": {
-                    "_id": "$agent_name",
+                    "_id": {
+                        "agent": "$agent_name",
+                        "action": "$action"
+                    },
                     "count": {"$sum": 1},
-                    "unique_users": {"$addToSet": "$user_id"},
-                    "actions": {"$addToSet": "$action"}
+                    "unique_users": {"$addToSet": "$user_id"}
                 }},
-                {"$addFields": {"unique_user_count": {"$size": "$unique_users"}}},
+                {"$group": {
+                    "_id": "$_id.agent",
+                    "count": {"$sum": "$count"},
+                    "unique_users": {"$addToSet": "$unique_users"},
+                    "actions": {"$addToSet": "$_id.action"}
+                }},
+                {"$project": {
+                    "_id": 1,
+                    "count": 1,
+                    "actions": 1,
+                    "unique_user_count": {"$size": {"$setUnion": "$unique_users"}}
+                }},
                 {"$sort": {"count": -1}}
             ]
             

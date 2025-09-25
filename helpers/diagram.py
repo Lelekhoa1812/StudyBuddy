@@ -27,7 +27,8 @@ async def generate_mermaid_diagram(
     nvidia_rotator,
     render_error: str = "",
     retry: int = 0,
-    max_retries: int = 5
+    max_retries: int = 5,
+    user_id: str = ""
 ) -> str:
     from utils.api.router import generate_answer_with_model
 
@@ -70,6 +71,27 @@ async def generate_mermaid_diagram(
     selection = {"provider": "nvidia_large", "model": "openai/gpt-oss-120b"}
 
     logger.info(f"[DIAGRAM] Generating Mermaid (retry={retry}/{max_retries})")
+    # Track analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="diagram",
+                action="generate_mermaid",
+                context="report_diagram",
+                metadata={"retry": retry}
+            )
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=selection["model"],
+                provider=selection["provider"],
+                context="report_diagram",
+                metadata={"retry": retry}
+            )
+    except Exception:
+        pass
     diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
     diagram = (diagram or "").strip()
 

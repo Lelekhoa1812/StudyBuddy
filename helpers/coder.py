@@ -20,7 +20,8 @@ async def generate_code_artifacts(
     context_text: str,
     web_context: str,
     gemini_rotator,
-    nvidia_rotator
+    nvidia_rotator,
+    user_id: str = ""
 ) -> str:
     """Generate code (files-by-files) with explanations using Gemini Pro.
 
@@ -51,6 +52,27 @@ async def generate_code_artifacts(
     selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
 
     logger.info(f"[CODER] Generating code for subsection {subsection_id} (task='{task[:60]}...')")
+    # Track analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="coding",
+                action="generate_code",
+                context="report_coding",
+                metadata={"subsection_id": subsection_id}
+            )
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=selection["model"],
+                provider=selection["provider"],
+                context="report_coding",
+                metadata={"subsection_id": subsection_id}
+            )
+    except Exception:
+        pass
     code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
     code_md = (code_md or "").strip()
 

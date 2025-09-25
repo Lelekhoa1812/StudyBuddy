@@ -138,6 +138,19 @@ async def generate_report(
     
     # Use enhanced instructions for better CoT planning
     cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator, gemini_rotator)
+    # Track planning agent
+    try:
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="planning",
+                action="plan_report",
+                context="report_planning",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+    except Exception:
+        pass
     
     # Step 2: Execute detailed subtasks based on CoT plan
     logger.info("[REPORT] Executing detailed subtasks")
@@ -151,6 +164,19 @@ async def generate_report(
     comprehensive_report = await synthesize_comprehensive_report(
         enhanced_instructions, cot_plan, detailed_analysis, eff_name, report_words, gemini_rotator, nvidia_rotator
     )
+    # Track synthesis (report agent)
+    try:
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="report",
+                action="synthesize_report",
+                context="report_synthesis",
+                metadata={"project_id": project_id, "session_id": session_id}
+            )
+    except Exception:
+        pass
     
     # Update status: Generating answer (final report generation)
     update_report_status(session_id, "generating", "Generating answer...", 80)
@@ -482,7 +508,8 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
                             context_text=context_text,
                             web_context=web_context,
                             gemini_rotator=gemini_rotator,
-                            nvidia_rotator=nvidia_rotator
+                            nvidia_rotator=nvidia_rotator,
+                            user_id=user_id
                         )
                         subtask_result = subtask_result + "\n\n" + code_markdown
                         try:
@@ -870,7 +897,7 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         try:
             if should_generate_mermaid(instructions, report):
                 logger.info("[REPORT] Considering Mermaid diagram generation")
-                diagram = await generate_mermaid_diagram(instructions, detailed_analysis, gemini_rotator, nvidia_rotator)
+                diagram = await generate_mermaid_diagram(instructions, detailed_analysis, gemini_rotator, nvidia_rotator, user_id=user_id)
                 if diagram:
                     report = ("## Diagrams\n\n" + "```mermaid\n" + diagram.strip() + "\n```\n\n" + report)
                 else:

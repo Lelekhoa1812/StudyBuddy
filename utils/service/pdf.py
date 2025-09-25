@@ -489,7 +489,7 @@ def _format_inline_markdown(text: str) -> str:
 
 def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
     """
-    Apply lightweight syntax highlighting on XML-escaped code text.
+    Apply professional IDE-like syntax highlighting on XML-escaped code text.
     Works with escaped entities (&lt; &gt; &amp;), so regexes should not rely on raw quotes.
     """
     def sub_outside_tags(pattern, repl, text, flags=0):
@@ -503,45 +503,101 @@ def _apply_syntax_highlight(escaped_code: str, language: str) -> str:
     lang = (language or 'text').lower()
 
     if lang in ('python', 'py'):
-        # Comments first
-        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
+        # Comments first (gray)
+        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#6a737d'>\1</font>", out)
+        # Docstrings (green)
+        out = sub_outside_tags(r'(&quot;&quot;&quot;[\s\S]*?&quot;&quot;&quot;)', r"<font color='#28a745'>\1</font>", out)
+        out = sub_outside_tags(r"(&#x27;&#x27;&#x27;[\s\S]*?&#x27;&#x27;&#x27;)", r"<font color='#28a745'>\1</font>", out)
+        # Keywords (purple)
         keywords = (
-            'def|class|if|else|elif|for|while|try|except|finally|import|from|as|with|return|yield|lambda|and|or|not|in|is|True|False|None|pass|break|continue|raise|assert'
+            'def|class|if|else|elif|for|while|try|except|finally|import|from|as|with|return|yield|lambda|and|or|not|in|is|True|False|None|pass|break|continue|raise|assert|global|nonlocal'
         )
-        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#6f42c1'><b>\1</b></font>", out)
+        # Built-in functions (blue)
+        builtins = (
+            'print|len|str|int|float|list|dict|tuple|set|range|enumerate|zip|map|filter|sorted|reversed|open|input|type|isinstance|hasattr|getattr|setattr|delattr'
+        )
+        out = sub_outside_tags(rf"\b({builtins})\b", r"<font color='#005cc5'>\1</font>", out)
 
     elif lang in ('javascript', 'js', 'typescript', 'ts'):
-        out = sub_outside_tags(r"(//[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
-        out = sub_outside_tags(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#5c6370'>{m.group(0)}</font>", out)
+        # Comments (gray)
+        out = sub_outside_tags(r"(//[^\n]*)", r"<font color='#6a737d'>\1</font>", out)
+        out = sub_outside_tags(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#6a737d'>{m.group(0)}</font>", out)
+        # Keywords (purple)
         keywords = (
-            'function|var|let|const|if|else|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|new|this|typeof|instanceof|true|false|null|undefined|async|await'
+            'function|var|let|const|if|else|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|new|this|typeof|instanceof|true|false|null|undefined|async|await|class|extends|implements|interface|type|namespace|module|export|import|default|public|private|protected|static|abstract|readonly'
         )
-        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#6f42c1'><b>\1</b></font>", out)
+        # Built-in objects (blue)
+        builtins = (
+            'console|window|document|Array|Object|String|Number|Boolean|Date|Math|JSON|Promise|Set|Map|WeakSet|WeakMap|Symbol|Proxy|Reflect'
+        )
+        out = sub_outside_tags(rf"\b({builtins})\b", r"<font color='#005cc5'>\1</font>", out)
 
     elif lang in ('json',):
-        out = sub_outside_tags(r"\b(true|false|null)\b", r"<font color='#56b6c2'><b>\1</b></font>", out)
-        out = sub_outside_tags(r"(&quot;[^&]*?&quot;)(\s*:)", r"<font color='#61afef'>\1</font>\2", out)
+        # Boolean and null values (blue)
+        out = sub_outside_tags(r"\b(true|false|null)\b", r"<font color='#005cc5'><b>\1</b></font>", out)
+        # Keys (purple)
+        out = sub_outside_tags(r"(&quot;[^&]*?&quot;)(\s*:)", r"<font color='#6f42c1'>\1</font>\2", out)
 
     elif lang in ('bash', 'sh', 'shell'):
-        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#5c6370'>\1</font>", out)
-        out = sub_outside_tags(r"(^|\n)(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)", r"\1\2<font color='#c678dd'><b>\3</b></font>", out)
+        # Comments (gray)
+        out = sub_outside_tags(r"(#[^\n]*)", r"<font color='#6a737d'>\1</font>", out)
+        # Commands (purple)
+        out = sub_outside_tags(r"(^|\n)(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)", r"\1\2<font color='#6f42c1'><b>\3</b></font>", out)
+        # Variables (blue)
+        out = sub_outside_tags(r"(\$[a-zA-Z_][a-zA-Z0-9_]*)", r"<font color='#005cc5'>\1</font>", out)
+        out = sub_outside_tags(r"(\$\{[^}]+\})", r"<font color='#005cc5'>\1</font>", out)
 
     elif lang in ('yaml', 'yml'):
-        out = sub_outside_tags(r"(^|\n)(\s*)([^:\n]+)(:)", r"\1\2<font color='#61afef'>\3</font>\4", out)
-        out = sub_outside_tags(r"\b(true|false|yes|no|on|off)\b", r"<font color='#56b6c2'><b>\1</b></font>", out, flags=re.IGNORECASE)
+        # Keys (purple)
+        out = sub_outside_tags(r"(^|\n)(\s*)([^:\n]+)(:)", r"\1\2<font color='#6f42c1'>\3</font>\4", out)
+        # Boolean values (blue)
+        out = sub_outside_tags(r"\b(true|false|yes|no|on|off)\b", r"<font color='#005cc5'><b>\1</b></font>", out, flags=re.IGNORECASE)
 
     elif lang in ('sql',):
+        # Keywords (purple)
         keywords = (
-            'SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|DATABASE|SCHEMA|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|UNION|DISTINCT|COUNT|SUM|AVG|MAX|MIN|AND|OR|NOT|IN|BETWEEN|LIKE|IS|NULL|ASC|DESC|LIMIT|OFFSET'
+            'SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|DATABASE|SCHEMA|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|HAVING|UNION|DISTINCT|COUNT|SUM|AVG|MAX|MIN|AND|OR|NOT|IN|BETWEEN|LIKE|IS|NULL|ASC|DESC|LIMIT|OFFSET|CASE|WHEN|THEN|ELSE|END|EXISTS|ALL|ANY|SOME'
         )
-        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#c678dd'><b>\1</b></font>", out, flags=re.IGNORECASE)
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#6f42c1'><b>\1</b></font>", out, flags=re.IGNORECASE)
 
-    # Strings
-    out = sub_outside_tags(r"(&quot;.*?&quot;)", r"<font color='#98c379'>\1</font>", out)
-    out = sub_outside_tags(r"(&#x27;.*?&#x27;)", r"<font color='#98c379'>\1</font>", out)
+    elif lang in ('java',):
+        # Comments (gray)
+        out = sub_outside_tags(r"(//[^\n]*)", r"<font color='#6a737d'>\1</font>", out)
+        out = sub_outside_tags(r"/\*[\s\S]*?\*/", lambda m: f"<font color='#6a737d'>{m.group(0)}</font>", out)
+        # Keywords (purple)
+        keywords = (
+            'public|private|protected|static|final|class|interface|extends|implements|if|else|for|while|do|switch|case|break|continue|return|try|catch|finally|throw|throws|new|this|super|import|package|void|int|long|float|double|boolean|char|byte|short|true|false|null|abstract|native|synchronized|volatile|transient|strictfp'
+        )
+        out = sub_outside_tags(rf"\b({keywords})\b", r"<font color='#6f42c1'><b>\1</b></font>", out)
+        # Built-in classes (blue)
+        builtins = (
+            'String|Object|Integer|Long|Float|Double|Boolean|Character|Byte|Short|System|Math|ArrayList|HashMap|HashSet|LinkedList|Vector|Collections|Arrays'
+        )
+        out = sub_outside_tags(rf"\b({builtins})\b", r"<font color='#005cc5'>\1</font>", out)
 
-    # Numbers last
-    out = sub_outside_tags(r"\b(\d+\.?\d*)\b", r"<font color='#d19a66'>\1</font>", out)
+    elif lang in ('css',):
+        # Selectors (purple)
+        out = sub_outside_tags(r"([.#]?[a-zA-Z][a-zA-Z0-9_-]*)(\s*\{)", r"<font color='#6f42c1'>\1</font>\2", out)
+        # Properties (blue)
+        out = sub_outside_tags(r"([a-zA-Z-]+)(\s*:)", r"<font color='#005cc5'>\1</font>\2", out)
+        # Values (green)
+        out = sub_outside_tags(r"(\s*:\s*)([^;]+)(;)", r"\1<font color='#28a745'>\2</font>\3", out)
+
+    elif lang in ('html', 'xml'):
+        # Tags (purple)
+        out = sub_outside_tags(r"(&lt;[^&gt;]*&gt;)", r"<font color='#6f42c1'><b>\1</b></font>", out)
+        # Attributes (blue)
+        out = sub_outside_tags(r"(\w+)=(&quot;[^&]*?&quot;)", r"<font color='#005cc5'>\1</font>=\2", out)
+
+    # Strings (green) - apply to all languages
+    out = sub_outside_tags(r"(&quot;.*?&quot;)", r"<font color='#28a745'>\1</font>", out)
+    out = sub_outside_tags(r"(&#x27;.*?&#x27;)", r"<font color='#28a745'>\1</font>", out)
+    out = sub_outside_tags(r"(`.*?`)", r"<font color='#28a745'>\1</font>", out)
+
+    # Numbers (orange) - apply to all languages
+    out = sub_outside_tags(r"\b(\d+\.?\d*)\b", r"<font color='#e36209'>\1</font>", out)
 
     return out
 
@@ -749,16 +805,16 @@ async def generate_report_pdf(report_content: str, user_id: str, project_id: str
             leading=14
         )
         
-        # Some reportlab versions don't include 'Code' in sample styles
+        # Professional IDE-like code styling with no background
         base_code_parent = styles['Code'] if 'Code' in styles.byName else styles['Normal']
         code_style = ParagraphStyle(
             'Code',
             parent=base_code_parent,
             fontSize=9,
             fontName='Courier',
-            textColor=colors.HexColor('#d4d4d4'),
-            backColor=colors.HexColor('#1e1e1e'),
-            borderColor=colors.HexColor('#2d2d2d'),
+            textColor=colors.HexColor('#2c3e50'),  # Dark text on white background
+            backColor=None,  # No background color
+            borderColor=colors.HexColor('#e1e8ed'),
             borderWidth=1,
             borderPadding=8,
             leftIndent=12,

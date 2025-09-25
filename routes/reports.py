@@ -862,6 +862,9 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         # Post-process to remove any remaining meta-commentary and ensure proper formatting
         report = remove_meta_commentary(report)
         report = ensure_hierarchical_structure(report)
+        
+        # Fix heading numbering using AI
+        report = await fix_heading_numbering(report, nvidia_rotator)
 
         # Optionally enrich with Mermaid diagrams when useful
         try:
@@ -1186,5 +1189,110 @@ def remove_meta_commentary(text: str) -> str:
             break
     
     return text
+
+
+async def fix_heading_numbering(report: str, nvidia_rotator) -> str:
+    """
+    Extract headings from the report, use AI to re-number them properly, then apply the fixes.
+    """
+    try:
+        import re
+        from utils.api.router import generate_answer_with_model
+        
+        # Extract all headings from the report
+        heading_pattern = r'^(#{1,6})\s*(.*)$'
+        headings = []
+        lines = report.split('\n')
+        
+        for i, line in enumerate(lines):
+            match = re.match(heading_pattern, line.strip())
+            if match:
+                level = len(match.group(1))  # Number of # characters
+                text = match.group(2).strip()
+                # Remove existing numbering if present
+                text = re.sub(r'^\d+\.?\s*', '', text)
+                headings.append({
+                    'line_number': i,
+                    'level': level,
+                    'text': text,
+                    'original_line': line
+                })
+        
+        if not headings:
+            logger.info("[REPORT] No headings found for re-numbering")
+            return report
+        
+        # Prepare headings for AI analysis
+        headings_text = "\n".join([f"{h['level']}. {h['text']}" for h in headings])
+        
+        # Use AI to re-number headings properly
+        sys_prompt = """You are an expert at structuring academic and technical documents. 
+Your task is to analyze the headings from a report and provide proper hierarchical numbering.
+
+Rules:
+1. Main sections (level 1) should be numbered 1, 2, 3, etc.
+2. Subsections (level 2) should be numbered 1.1, 1.2, 2.1, 2.2, etc.
+3. Sub-subsections (level 3) should be numbered 1.1.1, 1.1.2, 2.1.1, etc.
+4. Maintain logical hierarchy and proper nesting
+5. Return ONLY the renumbered headings in the exact format: "level: new_number: heading_text"
+6. One heading per line, no additional text or explanations"""
+
+        user_prompt = f"""Analyze these headings and provide proper hierarchical numbering:
+
+{headings_text}
+
+Return the renumbered headings in the format: "level: new_number: heading_text" (one per line)"""
+        
+        # Use NVIDIA model for heading re-numbering
+        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        
+        # Parse the AI response
+        renumbered_headings = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if ':' in line and line.count(':') >= 2:
+                try:
+                    parts = line.split(':', 2)
+                    level = int(parts[0].strip())
+                    new_number = parts[1].strip()
+                    heading_text = parts[2].strip()
+                    renumbered_headings.append({
+                        'level': level,
+                        'new_number': new_number,
+                        'text': heading_text
+                    })
+                except (ValueError, IndexError):
+                    logger.warning(f"[REPORT] Could not parse heading line: {line}")
+                    continue
+        
+        if not renumbered_headings:
+            logger.warning("[REPORT] AI heading re-numbering failed, using original headings")
+            return report
+        
+        # Apply the re-numbered headings to the report
+        updated_lines = lines.copy()
+        heading_index = 0
+        
+        for i, line in enumerate(lines):
+            match = re.match(heading_pattern, line.strip())
+            if match and heading_index < len(renumbered_headings):
+                level = len(match.group(1))
+                new_heading = renumbered_headings[heading_index]
+                
+                # Create the new heading line
+                hash_symbols = '#' * level
+                new_line = f"{hash_symbols} {new_heading['new_number']}. {new_heading['text']}"
+                updated_lines[i] = new_line
+                heading_index += 1
+        
+        # Reconstruct the report
+        fixed_report = '\n'.join(updated_lines)
+        logger.info(f"[REPORT] Successfully re-numbered {len(renumbered_headings)} headings")
+        return fixed_report
+        
+    except Exception as e:
+        logger.warning(f"[REPORT] Heading re-numbering failed: {e}")
+        return report
 
 

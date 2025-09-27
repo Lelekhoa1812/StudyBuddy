@@ -168,7 +168,7 @@ CURRENT QUESTION: {new_question}
 
 Is this a context switch?"""
                     
-                    selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+                    selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
                     response = await generate_answer_with_model(
                         selection=selection,
                         system_prompt=sys_prompt,

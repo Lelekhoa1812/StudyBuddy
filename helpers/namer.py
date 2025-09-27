@@ -68,7 +68,7 @@ Return only the session name, nothing else."""
         
         try:
             from utils.api.router import generate_answer_with_model
-            selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+            selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
             
             logger.info(f"[NAMER] Calling NVIDIA API with model: {selection['model']}")
             logger.info(f"[NAMER] System prompt length: {len(sys_prompt)}")

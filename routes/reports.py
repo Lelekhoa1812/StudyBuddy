@@ -291,7 +291,7 @@ Create a detailed plan for this report."""
 
     try:
         # Use Gemini for CoT planning since it's more reliable for complex JSON generation
-        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+        selection = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
         logger.info(f"[REPORT] Starting CoT API call with model: {selection['model']}")
         logger.info(f"[REPORT] System prompt length: {len(sys_prompt)}")
         logger.info(f"[REPORT] User prompt length: {len(user_prompt)}")
@@ -405,7 +405,7 @@ FILE SUMMARY: {file_summary[:500]}
 
 Create a simple plan for this report."""
 
-            simple_selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+            simple_selection = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
             simple_response = await generate_answer_with_model(simple_selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_planning_simple")
             simple_json_text = simple_response.strip()
             
@@ -661,7 +661,7 @@ CHAIN OF THOUGHT REFERENCES:
 Perform the comprehensive analysis as specified, following all sub-actions, meeting quality standards, and building upon previous work through CoT references."""
 
     try:
-        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+        selection = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
         analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_analysis")
         return analysis.strip()
         
@@ -745,7 +745,7 @@ DETAILED SUBTASK ANALYSES:
 Synthesize these analyses into a comprehensive, coherent section with proper hierarchical structure that fulfills the section purpose and builds upon previous work."""
 
     try:
-        selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
+        selection = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
         synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_synthesis")
         return synthesis.strip()
         
@@ -883,7 +883,7 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
 
     try:
         # Use Gemini Pro for final synthesis (better for long-form content)
-        selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
+        selection = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
         report = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_final")
         
         # Post-process to remove any remaining meta-commentary and ensure proper formatting
@@ -934,7 +934,7 @@ async def generate_code_artifacts(subsection_id: str, task: str, reasoning: str,
         f"CONTEXT (WEB):\n{trim_text(web_context, 3000)}\n\n"
         "Produce the code files and explanations as specified."
     )
-    selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
+    selection = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
     code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_coding")
     return code_md.strip()
 
@@ -1271,7 +1271,7 @@ Rules:
 Return the renumbered headings in the format: "level: new_number: heading_text" (one per line)"""
         
         # Use NVIDIA model for heading re-numbering
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id, "report_heading_fix")
         
         # Parse the AI response

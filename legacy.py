@@ -790,7 +790,7 @@ Return only the variations, one per line, no numbering or extra text."""
         user_prompt = f"Original question: {question}\n\nGenerate query variations:"
         
         from utils.api.router import generate_answer_with_model
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id="system", context="legacy_analysis")
         
         # Parse variations

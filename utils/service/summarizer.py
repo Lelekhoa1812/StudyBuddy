@@ -62,7 +62,21 @@ async def nvidia_large_summarize(text: str, max_sentences: int = 3) -> str:
   )
   user = f"Summarize this text:\n\n{text}"
   try:
-    return await nvidia_large_chat_completion(system, user, ROTATOR)
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id="system",
+                model_name="openai/gpt-oss-120b",
+                provider="nvidia_large",
+                context="summarization",
+                metadata={"text_length": len(text)}
+            )
+    except Exception:
+        pass
+    return await nvidia_large_chat_completion(system, user, ROTATOR, user_id="system", context="summarization")
   except Exception as e:
     logger.warning(f"NVIDIA Large summarization failed: {e}; using fallback")
     return naive_fallback(text, max_sentences)
@@ -119,8 +133,22 @@ async def clean_chunk_text(text: str) -> str:
   )
   user = f"Clean this content by removing headers/footers and IDs, keep core content:\n\n{content}"
   try:
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id="system",
+                model_name="meta/llama-3.1-8b-instruct",
+                provider="nvidia",
+                context="content_cleaning",
+                metadata={"text_length": len(text)}
+            )
+    except Exception:
+        pass
     # Use Qwen for better content cleaning
-    return await qwen_chat_completion(system, user, ROTATOR)
+    return await qwen_chat_completion(system, user, ROTATOR, user_id="system", context="content_cleaning")
   except Exception as e:
     logger.warning(f"Qwen cleaning failed: {e}; returning original text")
     return content
@@ -136,7 +164,21 @@ async def qwen_summarize(text: str, max_sentences: int = 3) -> str:
   )
   user = f"Summarize this text:\n\n{text}"
   try:
-    return await qwen_chat_completion(system, user, ROTATOR)
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id="system",
+                model_name="meta/llama-3.1-8b-instruct",
+                provider="nvidia",
+                context="qwen_summarization",
+                metadata={"text_length": len(text)}
+            )
+    except Exception:
+        pass
+    return await qwen_chat_completion(system, user, ROTATOR, user_id="system", context="qwen_summarization")
   except Exception as e:
     logger.warning(f"Qwen summarization failed: {e}; using fallback")
     return naive_fallback(text, max_sentences)

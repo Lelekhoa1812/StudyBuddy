@@ -690,7 +690,7 @@ Return only the formatted references, one per line, numbered sequentially."""
         
         user_prompt = f"Format these sources in IEEE style:\n\n{source_data}"
         
-        selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
+        selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id="system", context="pdf_citation")
         
         # Parse the response into individual references

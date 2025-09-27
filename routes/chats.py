@@ -243,6 +243,17 @@ Return only the variations, one per line, no numbering or extra text."""
         
         user_prompt = f"Original question: {question}\n\nGenerate query variations:"
         
+        # Track chat agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="chat",
+                action="generate_variations",
+                context="chat_query_variations",
+                metadata={"query": question}
+            )
+        
         # Use Qwen for better query variation generation reasoning
         from utils.api.router import qwen_chat_completion
         response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "chat_query_variations")

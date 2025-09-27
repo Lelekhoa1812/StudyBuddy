@@ -68,7 +68,7 @@ async def generate_mermaid_diagram(
     )
 
     # Use NVIDIA_LARGE for better diagram generation
-    selection = {"provider": "nvidia_large", "model": "openai/gpt-oss-120b"}
+    selection = {"provider": "nvidia_large", "model": os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b")}
 
     logger.info(f"[DIAGRAM] Generating Mermaid (retry={retry}/{max_retries})")
     # Track analytics
@@ -185,7 +185,7 @@ ERROR MESSAGE:
 Please provide the corrected Mermaid code that will render successfully."""
 
         # Use NVIDIA_LARGE for better error correction
-        selection = {"provider": "nvidia_large", "model": "openai/gpt-oss-120b"}
+        selection = {"provider": "nvidia_large", "model": os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b")}
         response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, None, user_id, "diagram_fix")
         
         if response:

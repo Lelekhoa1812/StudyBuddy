@@ -35,8 +35,19 @@ Return only the keywords, separated by spaces, no other text."""
             await tracker.track_agent_usage(
                 user_id="system",  # Search is system-level
                 agent_name="search",
-                action="search",
+                action="web",
                 context="web_search",
+                metadata={"query": user_query}
+            )
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="search",
+                context="search_keyword_extraction",
                 metadata={"query": user_query}
             )
         
@@ -75,6 +86,17 @@ For each strategy, provide:
 Return as JSON array of objects."""
         
         user_prompt = f"User query: {user_query}\n\nGenerate search strategies:"
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="strategies",
+                context="search_strategy_generation",
+                metadata={"query": user_query}
+            )
         
         # Use NVIDIA Large for better strategy generation
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
@@ -336,6 +358,17 @@ Return only the relevant content, no additional commentary."""
         
         user_prompt = f"User Query: {user_query}\n\nWeb Content:\n{content}\n\nExtract relevant information:"
         
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="content",
+                context="search_content_extraction",
+                metadata={"query": user_query}
+            )
+        
         # Use NVIDIA Large for better content extraction
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
@@ -360,6 +393,17 @@ async def assess_content_quality(content: str, nvidia_rotator) -> Dict[str, Any]
 Consider: accuracy, completeness, clarity, authority, recency, bias, factual claims."""
         
         user_prompt = f"Assess this content quality:\n\n{content[:2000]}"
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="quality",
+                context="search_quality_assessment",
+                metadata={"query": user_query}
+            )
         
         # Use NVIDIA Large for better quality assessment
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
@@ -424,6 +468,17 @@ async def cross_validate_information(content: str, other_contents: List[str], nv
 Focus on factual claims, statistics, and verifiable information."""
         
         user_prompt = f"Main content:\n{content[:1000]}\n\nOther sources:\n{comparison_text[:2000]}\n\nAnalyze consistency:"
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="content",
+                context="search_content_validation",
+                metadata={"query": user_query}
+            )
         
         # Use NVIDIA Large for better cross-validation
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
@@ -491,6 +546,17 @@ Focus on the most important facts and insights.
 Be clear and direct."""
         
         user_prompt = f"Summarize this content:\n\n{content}"
+        
+        # Track search agent usage
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="search",
+                action="summarize",
+                context="search_content_summarization",
+                metadata={"query": user_query}
+            )
         
         # Use NVIDIA Large for better summarization
         response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")

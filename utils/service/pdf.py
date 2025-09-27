@@ -70,7 +70,7 @@ async def _parse_markdown_content(content: str, heading1_style, heading2_style, 
                         mermaid_code = '\n'.join(code_lines)
                         # Use retry logic from diagram.py
                         from helpers.diagram import _render_mermaid_with_retry
-                        img_bytes = await _render_mermaid_with_retry(mermaid_code)
+                        img_bytes = await _render_mermaid_with_retry(mermaid_code, user_id=user_id)
                         
                         if img_bytes and len(img_bytes) > 0:
                             import io

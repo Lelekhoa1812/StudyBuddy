@@ -891,7 +891,7 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         report = ensure_hierarchical_structure(report)
         
         # Fix heading numbering using AI
-        report = await fix_heading_numbering(report, nvidia_rotator)
+        report = await fix_heading_numbering(report, nvidia_rotator, user_id)
 
         # Optionally enrich with Mermaid diagrams when useful
         try:
@@ -1218,7 +1218,7 @@ def remove_meta_commentary(text: str) -> str:
     return text
 
 
-async def fix_heading_numbering(report: str, nvidia_rotator) -> str:
+async def fix_heading_numbering(report: str, nvidia_rotator, user_id: str = "") -> str:
     """
     Extract headings from the report, use AI to re-number them properly, then apply the fixes.
     """

@@ -107,13 +107,13 @@ async def generate_mermaid_diagram(
         if retry < max_retries:
             return await generate_mermaid_diagram(
                 instructions, detailed_analysis, gemini_rotator, nvidia_rotator,
-                render_error="Diagram did not include recognizable Mermaid diagram keyword.", retry=retry+1
+                render_error="Diagram did not include recognizable Mermaid diagram keyword.", retry=retry+1, user_id=user_id
             )
 
     return diagram
 
 
-async def _render_mermaid_with_retry(mermaid_text: str, max_retries: int = 3) -> bytes:
+async def _render_mermaid_with_retry(mermaid_text: str, max_retries: int = 3, user_id: str = "") -> bytes:
     """
     Render mermaid code to PNG with retry logic and AI-powered error correction.
     """

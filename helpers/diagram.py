@@ -257,7 +257,7 @@ def _render_mermaid_png(mermaid_text: str) -> bytes:
     return b""
 
 
-async def fix_mermaid_syntax_for_ui(mermaid_text: str, error_message: str = "") -> str:
+async def fix_mermaid_syntax_for_ui(mermaid_text: str, error_message: str = "", user_id: str = "") -> str:
     """
     Fix Mermaid syntax for UI rendering using AI.
     Returns the corrected Mermaid code that can be used in the browser.

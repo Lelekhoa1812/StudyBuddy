@@ -495,7 +495,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
                 subtask_result = await analyze_subtask_with_cot_references(
                     subsection_id, task, reasoning, sources_needed, depth, sub_actions,
                     expected_output, quality_checks, context_text, web_context, filename,
-                    agent_context_shared, nvidia_rotator, gemini_rotator
+                    agent_context_shared, nvidia_rotator, gemini_rotator, user_id
                 )
                 code_blocks = None
                 if any(kw in (task.lower() + " " + reasoning.lower()) for kw in ["implement", "code", "function", "class", "api", "script", "module", "endpoint"]):
@@ -576,7 +576,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
 async def analyze_subtask_with_cot_references(subsection_id: str, task: str, reasoning: str, sources_needed: List[str], 
                                              depth: str, sub_actions: List[str], expected_output: str, quality_checks: List[str],
                                              context_text: str, web_context: str, filename: str, agent_context: Dict[str, Any],
-                                             nvidia_rotator, gemini_rotator) -> str:
+                                             nvidia_rotator, gemini_rotator, user_id: str = "") -> str:
     """Analyze a specific subtask with comprehensive detail, CoT references, and hierarchical context."""
     
     # Select appropriate context based on sources_needed
@@ -672,11 +672,11 @@ Perform the comprehensive analysis as specified, following all sub-actions, meet
 
 async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_needed: List[str], depth: str,
                                       sub_actions: List[str], expected_output: str, quality_checks: List[str],
-                                      context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> str:
+                                      context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator, user_id: str = "") -> str:
     """Legacy function for backward compatibility."""
     return await analyze_subtask_with_cot_references(
         "1.1", task, reasoning, sources_needed, depth, sub_actions, expected_output, 
-        quality_checks, context_text, web_context, filename, {}, nvidia_rotator, gemini_rotator
+        quality_checks, context_text, web_context, filename, {}, nvidia_rotator, gemini_rotator, user_id
     )
 
 
@@ -1335,7 +1335,7 @@ async def fix_mermaid_syntax(
         from helpers.diagram import fix_mermaid_syntax_for_ui
         
         logger.info(f"[MERMAID] Fixing Mermaid syntax for UI")
-        fixed_code = await fix_mermaid_syntax_for_ui(mermaid_code, error_message)
+        fixed_code = await fix_mermaid_syntax_for_ui(mermaid_code, error_message, user_id)
         
         return {
             "success": True,

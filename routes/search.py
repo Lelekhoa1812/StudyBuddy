@@ -35,7 +35,7 @@ Return only the keywords, separated by spaces, no other text."""
             await tracker.track_agent_usage(
                 user_id="system",  # Search is system-level
                 agent_name="search",
-                action="extract_keywords",
+                action="search",
                 context="web_search",
                 metadata={"query": user_query}
             )

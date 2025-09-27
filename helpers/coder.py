@@ -49,7 +49,7 @@ async def generate_code_artifacts(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="coding",
-                action="generate_code",
+                action="code",
                 context="report_coding",
                 metadata={"subsection_id": subsection_id, "model": NVIDIA_CODER}
             )

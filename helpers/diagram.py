@@ -79,7 +79,7 @@ async def generate_mermaid_diagram(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="diagram",
-                action="generate_mermaid",
+                action="diagram",
                 context="report_diagram",
                 metadata={"retry": retry}
             )

@@ -742,7 +742,7 @@ async def _chat_impl(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="chat",
-                action="generate_answer",
+                action="chat",
                 context="chat",
                 metadata={"project_id": project_id, "session_id": session_id}
             )
@@ -942,7 +942,7 @@ async def chat_with_search(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="chat",
-                action="generate_web_augmented_answer",
+                action="chat",
                 context="chat_web_augmented",
                 metadata={"project_id": project_id, "session_id": session_id}
             )

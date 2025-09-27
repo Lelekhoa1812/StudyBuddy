@@ -131,7 +131,7 @@ async def generate_report(
         await tracker.track_agent_usage(
             user_id=user_id,
             agent_name="report",
-            action="generate_report",
+            action="report",
             context="report_generation",
             metadata={"project_id": project_id, "session_id": session_id, "filename": filename}
         )
@@ -145,7 +145,7 @@ async def generate_report(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="planning",
-                action="plan_report",
+                action="plan",
                 context="report_planning",
                 metadata={"project_id": project_id, "session_id": session_id}
             )
@@ -171,7 +171,7 @@ async def generate_report(
             await tracker.track_agent_usage(
                 user_id=user_id,
                 agent_name="report",
-                action="synthesize_report",
+                action="report",
                 context="report_synthesis",
                 metadata={"project_id": project_id, "session_id": session_id}
             )

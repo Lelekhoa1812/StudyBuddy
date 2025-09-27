@@ -41,7 +41,7 @@ Return only the keywords, separated by spaces, no other text."""
             )
         
         # Use NVIDIA Large for better keyword extraction
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         keywords = [kw.strip() for kw in response.split() if kw.strip()]
         return keywords[:5] if keywords else [user_query]
@@ -77,7 +77,7 @@ Return as JSON array of objects."""
         user_prompt = f"User query: {user_query}\n\nGenerate search strategies:"
         
         # Use NVIDIA Large for better strategy generation
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         try:
             strategies = json.loads(response)
@@ -337,7 +337,7 @@ Return only the relevant content, no additional commentary."""
         user_prompt = f"User Query: {user_query}\n\nWeb Content:\n{content}\n\nExtract relevant information:"
         
         # Use NVIDIA Large for better content extraction
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         return response.strip() if response.strip() else ""
         
@@ -362,7 +362,7 @@ Consider: accuracy, completeness, clarity, authority, recency, bias, factual cla
         user_prompt = f"Assess this content quality:\n\n{content[:2000]}"
         
         # Use NVIDIA Large for better quality assessment
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         try:
             # Try to parse JSON response
@@ -426,7 +426,7 @@ Focus on factual claims, statistics, and verifiable information."""
         user_prompt = f"Main content:\n{content[:1000]}\n\nOther sources:\n{comparison_text[:2000]}\n\nAnalyze consistency:"
         
         # Use NVIDIA Large for better cross-validation
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         try:
             validation = json.loads(response)
@@ -493,7 +493,7 @@ Be clear and direct."""
         user_prompt = f"Summarize this content:\n\n{content}"
         
         # Use NVIDIA Large for better summarization
-        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await nvidia_large_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "search_keyword_extraction")
         
         return response.strip() if response.strip() else content[:200] + "..."
         

@@ -245,7 +245,7 @@ Return only the variations, one per line, no numbering or extra text."""
         
         # Use Qwen for better query variation generation reasoning
         from utils.api.router import qwen_chat_completion
-        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+        response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "chat_query_variations")
         
         # Parse variations
         variations = [line.strip() for line in response.split('\n') if line.strip()]

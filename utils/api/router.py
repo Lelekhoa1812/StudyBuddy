@@ -184,7 +184,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
     elif provider == "qwen":
         # Use Qwen for reasoning tasks with fallback
         try:
-            return await qwen_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+            return await qwen_chat_completion(system_prompt, user_prompt, nvidia_rotator, user_id, context)
         except Exception as e:
             logger.warning(f"Qwen model failed: {e}. Attempting fallback...")
             # Fallback: Qwen → NVIDIA_SMALL
@@ -194,7 +194,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
     elif provider == "nvidia_large":
         # Use NVIDIA Large (GPT-OSS) for hard/long context tasks with fallback
         try:
-            return await nvidia_large_chat_completion(system_prompt, user_prompt, nvidia_rotator)
+            return await nvidia_large_chat_completion(system_prompt, user_prompt, nvidia_rotator, user_id, context)
         except Exception as e:
             logger.warning(f"NVIDIA_LARGE model failed: {e}. Attempting fallback...")
             # Fallback: NVIDIA_LARGE → NVIDIA_SMALL
@@ -205,7 +205,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
         # Use NVIDIA Coder for code generation tasks with fallback
         try:
             from helpers.coder import nvidia_coder_completion
-            return await nvidia_coder_completion(system_prompt, user_prompt, nvidia_rotator)
+            return await nvidia_coder_completion(system_prompt, user_prompt, nvidia_rotator, user_id, context)
         except Exception as e:
             logger.warning(f"NVIDIA_CODER model failed: {e}. Attempting fallback...")
             # Fallback: NVIDIA_CODER → NVIDIA_SMALL
@@ -216,11 +216,25 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
     return "Unsupported provider."
 
 
-async def qwen_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator) -> str:
+async def qwen_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator, user_id: str = None, context: str = "") -> str:
     """
     Qwen chat completion with thinking mode enabled.
     Uses the NVIDIA API rotator for key management.
     """
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name="meta/llama-3.1-8b-instruct",
+                provider="nvidia",
+                context=context or "qwen_completion",
+                metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
+            )
+    except Exception as e:
+        logger.debug(f"[ROUTER] Analytics tracking failed: {e}")
     key = nvidia_rotator.get_key() or ""
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     
@@ -294,11 +308,25 @@ async def qwen_chat_completion(system_prompt: str, user_prompt: str, nvidia_rota
         return "I couldn't process the request with Qwen model."
 
 
-async def nvidia_large_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator) -> str:
+async def nvidia_large_chat_completion(system_prompt: str, user_prompt: str, nvidia_rotator: APIKeyRotator, user_id: str = None, context: str = "") -> str:
     """
     NVIDIA Large (GPT-OSS) chat completion for hard/long context tasks.
     Uses the NVIDIA API rotator for key management.
     """
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name="openai/gpt-oss-120b",
+                provider="nvidia_large",
+                context=context or "nvidia_large_completion",
+                metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
+            )
+    except Exception as e:
+        logger.debug(f"[ROUTER] Analytics tracking failed: {e}")
     key = nvidia_rotator.get_key() or ""
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     

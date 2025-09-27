@@ -149,7 +149,7 @@ async def generate_code_artifacts(
     )
 
     # Use the new NVIDIA coder function
-    code_md = await nvidia_coder_completion(system_prompt, user_prompt, nvidia_rotator)
+    code_md = await nvidia_coder_completion(system_prompt, user_prompt, nvidia_rotator, user_id, "coding")
     code_md = (code_md or "").strip()
 
     # Track NVIDIA_CODER usage
@@ -178,11 +178,25 @@ async def generate_code_artifacts(
     return code_md
 
 
-async def nvidia_coder_completion(system_prompt: str, user_prompt: str, nvidia_rotator) -> str:
+async def nvidia_coder_completion(system_prompt: str, user_prompt: str, nvidia_rotator, user_id: str = None, context: str = "") -> str:
     """
     NVIDIA Coder completion using the specified coder model with streaming support.
     Uses the NVIDIA API rotator for key management and supports Chain of Thought reasoning.
     """
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name="nvidia/coder-8b",
+                provider="nvidia_coder",
+                context=context or "nvidia_coder_completion",
+                metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
+            )
+    except Exception as e:
+        logger.debug(f"[CODER] Analytics tracking failed: {e}")
     key = nvidia_rotator.get_key() or ""
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     

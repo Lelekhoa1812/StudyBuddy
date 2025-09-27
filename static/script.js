@@ -586,10 +586,16 @@
           
           // Handle session auto-naming if returned
           if (data.session_name && data.session_id) {
+            console.log(`[FRONTEND] 🎯 Auto-naming received: session_id=${data.session_id}, name='${data.session_name}'`);
             // Update the session name in the UI immediately
             if (window.__sb_update_session_name) {
+              console.log(`[FRONTEND] 🔄 Calling updateSessionName function...`);
               window.__sb_update_session_name(data.session_id, data.session_name);
+            } else {
+              console.warn(`[FRONTEND] ❌ updateSessionName function not available`);
             }
+          } else {
+            console.log(`[FRONTEND] ℹ️ No auto-naming data received:`, { session_name: data.session_name, session_id: data.session_id });
           }
           
           await saveChatMessage(

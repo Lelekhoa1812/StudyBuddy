@@ -35,6 +35,12 @@ async def auto_name_session(
         Generated session name or None if failed
     """
     try:
+        logger.info(f"[NAMER] Starting auto-naming for session {session_id}")
+        logger.info(f"[NAMER] User: {user_id}, Project: {project_id}")
+        logger.info(f"[NAMER] First query: {first_query[:100]}...")
+        logger.info(f"[NAMER] NVIDIA rotator available: {nvidia_rotator is not None}")
+        logger.info(f"[NAMER] Database available: {rag_db is not None}")
+        
         if not nvidia_rotator:
             logger.warning("[NAMER] NVIDIA rotator not available")
             return None
@@ -64,6 +70,10 @@ Return only the session name, nothing else."""
             from utils.api.router import generate_answer_with_model
             selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
             
+            logger.info(f"[NAMER] Calling NVIDIA API with model: {selection['model']}")
+            logger.info(f"[NAMER] System prompt length: {len(sys_prompt)}")
+            logger.info(f"[NAMER] User prompt: {user_prompt}")
+            
             response = await generate_answer_with_model(
                 selection=selection,
                 system_prompt=sys_prompt,
@@ -72,41 +82,58 @@ Return only the session name, nothing else."""
                 nvidia_rotator=nvidia_rotator
             )
             
+            logger.info(f"[NAMER] Raw API response: {response}")
+            
             # Clean up the response
             session_name = response.strip()
+            logger.info(f"[NAMER] Initial session name: '{session_name}'")
+            
             # Remove quotes if present
             if session_name.startswith('"') and session_name.endswith('"'):
                 session_name = session_name[1:-1]
+                logger.info(f"[NAMER] Removed double quotes: '{session_name}'")
             if session_name.startswith("'") and session_name.endswith("'"):
                 session_name = session_name[1:-1]
+                logger.info(f"[NAMER] Removed single quotes: '{session_name}'")
             
             # Truncate if too long (safety measure)
             if len(session_name) > 50:
                 session_name = session_name[:47] + "..."
+                logger.info(f"[NAMER] Truncated long name: '{session_name}'")
+            
+            logger.info(f"[NAMER] Final session name: '{session_name}'")
             
             # Update the session with the auto-generated name in database
             if rag_db:
+                logger.info(f"[NAMER] Updating database for session {session_id}")
+                logger.info(f"[NAMER] Query: user_id={user_id}, project_id={project_id}, session_id={session_id}")
+                
                 result = rag_db["chat_sessions"].update_many(
                     {"user_id": user_id, "project_id": project_id, "session_id": session_id},
                     {"$set": {"session_name": session_name, "is_auto_named": True}}
                 )
                 
+                logger.info(f"[NAMER] Database update result: matched={result.matched_count}, modified={result.modified_count}")
+                
                 if result.modified_count > 0:
-                    logger.info(f"[NAMER] Auto-named session '{session_id}' to '{session_name}'")
+                    logger.info(f"[NAMER] ✅ Successfully auto-named session '{session_id}' to '{session_name}'")
                     return session_name
                 else:
-                    logger.warning(f"[NAMER] Session not found for auto-naming: {session_id}")
+                    logger.warning(f"[NAMER] ❌ Session not found for auto-naming: {session_id}")
+                    logger.warning(f"[NAMER] This might mean the session doesn't exist in the database yet")
                     return None
             else:
-                logger.warning("[NAMER] Database connection not provided")
+                logger.warning("[NAMER] ❌ Database connection not provided")
                 return session_name
                 
         except Exception as e:
-            logger.warning(f"[NAMER] Auto-naming failed: {e}")
+            logger.error(f"[NAMER] ❌ Auto-naming API call failed: {e}")
+            logger.error(f"[NAMER] Exception type: {type(e).__name__}")
             return None
             
     except Exception as e:
-        logger.error(f"[NAMER] Failed to auto-name session: {e}")
+        logger.error(f"[NAMER] ❌ Failed to auto-name session: {e}")
+        logger.error(f"[NAMER] Exception type: {type(e).__name__}")
         return None
 
 

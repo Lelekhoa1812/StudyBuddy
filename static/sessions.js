@@ -98,6 +98,9 @@
   }
   
   function updateSessionDropdown() {
+    console.log(`[SESSIONS] 🔄 updateSessionDropdown called with ${sessions.length} sessions`);
+    console.log(`[SESSIONS] Sessions:`, sessions.map(s => ({ id: s.session_id, name: s.name, auto: s.is_auto_named })));
+    
     sessionDropdown.innerHTML = '<option value="">Select Session</option>';
     
     sessions.forEach(session => {
@@ -108,6 +111,7 @@
         option.textContent += ' (Auto)';
       }
       sessionDropdown.appendChild(option);
+      console.log(`[SESSIONS] Added option: ${option.value} = ${option.textContent}`);
     });
     
     // Add create new session option
@@ -118,6 +122,8 @@
     
     // Update session actions visibility
     updateSessionActions();
+    
+    console.log(`[SESSIONS] ✅ Dropdown updated with ${sessionDropdown.children.length} options`);
   }
   
   function updateSessionActions() {
@@ -361,21 +367,32 @@
   
   // Function to update session name in UI immediately
   function updateSessionName(sessionId, newName) {
+    console.log(`[SESSIONS] 🔄 updateSessionName called: sessionId=${sessionId}, newName='${newName}'`);
+    console.log(`[SESSIONS] Current sessions:`, sessions.map(s => ({ id: s.session_id, name: s.name })));
+    
     // Update the session in our local sessions array
     const sessionIndex = sessions.findIndex(s => s.session_id === sessionId);
+    console.log(`[SESSIONS] Session index found: ${sessionIndex}`);
+    
     if (sessionIndex !== -1) {
+      console.log(`[SESSIONS] 📝 Updating session at index ${sessionIndex}: '${sessions[sessionIndex].name}' -> '${newName}'`);
       sessions[sessionIndex].name = newName;
       sessions[sessionIndex].is_auto_named = false;
       
       // Update the dropdown to reflect the new name
+      console.log(`[SESSIONS] 🔄 Updating dropdown...`);
       updateSessionDropdown();
       
       // If this is the currently selected session, update the dropdown value
       if (currentSessionId === sessionId) {
+        console.log(`[SESSIONS] 🎯 This is the current session, updating dropdown selection`);
         sessionDropdown.value = sessionId;
       }
       
-      console.log(`[SESSIONS] Updated session name to: ${newName}`);
+      console.log(`[SESSIONS] ✅ Updated session name to: ${newName}`);
+    } else {
+      console.warn(`[SESSIONS] ❌ Session not found in local array: ${sessionId}`);
+      console.warn(`[SESSIONS] Available sessions:`, sessions.map(s => s.session_id));
     }
   }
   

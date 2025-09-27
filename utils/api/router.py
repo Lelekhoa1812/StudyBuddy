@@ -201,6 +201,17 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             logger.info("Falling back from NVIDIA_LARGE to NVIDIA_SMALL")
             fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
             return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+    elif provider == "nvidia_coder":
+        # Use NVIDIA Coder for code generation tasks with fallback
+        try:
+            from helpers.coder import nvidia_coder_completion
+            return await nvidia_coder_completion(system_prompt, user_prompt, nvidia_rotator)
+        except Exception as e:
+            logger.warning(f"NVIDIA_CODER model failed: {e}. Attempting fallback...")
+            # Fallback: NVIDIA_CODER → NVIDIA_SMALL
+            logger.info("Falling back from NVIDIA_CODER to NVIDIA_SMALL")
+            fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
 
     return "Unsupported provider."
 

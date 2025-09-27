@@ -138,7 +138,7 @@ async def _render_mermaid_with_retry(mermaid_text: str, max_retries: int = 3) ->
         if attempt < max_retries - 1:
             try:
                 logger.info(f"[DIAGRAM] Attempting to fix Mermaid syntax using AI (attempt {attempt + 1})")
-                fixed_mermaid = await _fix_mermaid_with_ai(mermaid_text, last_error)
+                fixed_mermaid = await _fix_mermaid_with_ai(mermaid_text, last_error, user_id)
                 if fixed_mermaid and fixed_mermaid != mermaid_text:
                     mermaid_text = fixed_mermaid
                     logger.info(f"[DIAGRAM] AI provided fixed Mermaid code for retry {attempt + 2}")
@@ -153,7 +153,7 @@ async def _render_mermaid_with_retry(mermaid_text: str, max_retries: int = 3) ->
     return b""
 
 
-async def _fix_mermaid_with_ai(mermaid_text: str, error_message: str) -> str:
+async def _fix_mermaid_with_ai(mermaid_text: str, error_message: str, user_id: str = "") -> str:
     """
     Use AI to fix Mermaid syntax errors.
     """
@@ -272,7 +272,7 @@ async def fix_mermaid_syntax_for_ui(mermaid_text: str, error_message: str = "") 
                 error_message = "Missing valid Mermaid diagram type declaration"
         
         # Use AI to fix the mermaid code
-        fixed_code = await _fix_mermaid_with_ai(mermaid_text, error_message)
+        fixed_code = await _fix_mermaid_with_ai(mermaid_text, error_message, user_id)
         
         if fixed_code and fixed_code != mermaid_text:
             logger.info(f"[DIAGRAM] AI provided fixed Mermaid code for UI")

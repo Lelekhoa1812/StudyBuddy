@@ -162,7 +162,7 @@ async def generate_report(
     update_report_status(session_id, "thinking", "Thinking solution...", 60)
     # Use enhanced instructions for better report synthesis
     comprehensive_report = await synthesize_comprehensive_report(
-        enhanced_instructions, cot_plan, detailed_analysis, eff_name, report_words, gemini_rotator, nvidia_rotator
+        enhanced_instructions, cot_plan, detailed_analysis, eff_name, report_words, gemini_rotator, nvidia_rotator, user_id
     )
     # Track synthesis (report agent)
     try:
@@ -763,7 +763,7 @@ async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesi
 
 async def synthesize_comprehensive_report(instructions: str, cot_plan: Dict[str, Any], 
                                         detailed_analysis: Dict[str, Any], filename: str, 
-                                        report_words: int, gemini_rotator, nvidia_rotator) -> str:
+                                        report_words: int, gemini_rotator, nvidia_rotator, user_id: str = "") -> str:
     """Synthesize the detailed analysis into a comprehensive, hierarchical report with CoT integration."""
     
     # Prepare hierarchical synthesis materials with proper section numbering

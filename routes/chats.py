@@ -334,7 +334,7 @@ async def chat(
             })
             
             # Check if this is the first user message
-            existing_messages = rag.db["chat_sessions"].count_documents({
+            existing_messages = rag.db["chat_messages"].count_documents({
                 "user_id": user_id, 
                 "project_id": project_id, 
                 "session_id": session_id,
@@ -342,6 +342,9 @@ async def chat(
             })
             
             logger.info(f"[CHAT] Session {session_id}: existing_session={existing_session is not None}, existing_messages={existing_messages}")
+            if existing_session:
+                logger.info(f"[CHAT] Existing session data: {existing_session}")
+            logger.info(f"[CHAT] Query for existing messages: user_id={user_id}, project_id={project_id}, session_id={session_id}")
             
             # If session doesn't exist, create it
             if not existing_session:

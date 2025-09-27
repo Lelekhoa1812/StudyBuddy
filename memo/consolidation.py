@@ -48,7 +48,7 @@ class ConsolidationManager:
             for group in memory_groups:
                 if len(group) > 1:
                     # Consolidate similar memories
-                    consolidated_memory = await self._consolidate_memory_group(group, nvidia_rotator)
+                    consolidated_memory = await self._consolidate_memory_group(group, nvidia_rotator, user_id)
                     
                     if consolidated_memory:
                         # Remove old memories and add consolidated one
@@ -145,7 +145,7 @@ class ConsolidationManager:
             return 0.0
     
     async def _consolidate_memory_group(self, group: List[Dict[str, Any]], 
-                                      nvidia_rotator) -> Optional[Dict[str, Any]]:
+                                      nvidia_rotator, user_id: str = "") -> Optional[Dict[str, Any]]:
         """Consolidate a group of similar memories into one"""
         try:
             if not group or len(group) < 2:
@@ -179,9 +179,24 @@ Return the consolidated content in the same format as the original memories."""
 
 Create a single consolidated memory:"""
                     
+                    # Track memory agent usage
+                    try:
+                        from utils.analytics import get_analytics_tracker
+                        tracker = get_analytics_tracker()
+                        if tracker and user_id:
+                            await tracker.track_agent_usage(
+                                user_id=user_id,
+                                agent_name="memory",
+                                action="consolidate",
+                                context="memory_consolidation",
+                                metadata={"memories_count": len(contents)}
+                            )
+                    except Exception:
+                        pass
+                    
                     # Use Qwen for better memory consolidation reasoning
                     from utils.api.router import qwen_chat_completion
-                    consolidated_content = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+                    consolidated_content = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "memory_consolidation")
                     
                     return {
                         "content": consolidated_content.strip(),

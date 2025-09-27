@@ -84,7 +84,7 @@ class SessionManager:
             
             # Check if this is a context switch
             is_switch, confidence = await self._detect_context_switch(
-                session_info.get("last_question", ""), new_question, nvidia_rotator
+                session_info.get("last_question", ""), new_question, nvidia_rotator, user_id
             )
             
             if is_switch and confidence > 0.7:
@@ -140,7 +140,7 @@ class SessionManager:
     # ────────────────────────────── Private Helper Methods ──────────────────────────────
     
     async def _detect_context_switch(self, last_question: str, new_question: str, 
-                                   nvidia_rotator) -> Tuple[bool, float]:
+                                   nvidia_rotator, user_id: str = "") -> Tuple[bool, float]:
         """Detect if user has switched context/topic"""
         try:
             if not last_question or not new_question:
@@ -149,6 +149,18 @@ class SessionManager:
             if nvidia_rotator:
                 try:
                     from utils.api.router import generate_answer_with_model
+                    from utils.analytics import get_analytics_tracker
+                    
+                    # Track memory agent usage
+                    tracker = get_analytics_tracker()
+                    if tracker and user_id:
+                        await tracker.track_agent_usage(
+                            user_id=user_id,
+                            agent_name="memory",
+                            action="detect",
+                            context="context_switch_detection",
+                            metadata={"last_question": last_question[:100], "new_question": new_question[:100]}
+                        )
                     
                     sys_prompt = """You are an expert at detecting context switches in conversations.
 
@@ -175,7 +187,7 @@ Is this a context switch?"""
                         user_prompt=user_prompt,
                         gemini_rotator=None,
                         nvidia_rotator=nvidia_rotator,
-                        user_id="system",
+                        user_id=user_id,
                         context="context_switch_detection"
                     )
                     

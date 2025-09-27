@@ -78,7 +78,7 @@ class ExecutionEngine:
                     # Use AI to select most relevant Q&A pairs for enhancement
                     if params["use_ai_selection"] and nvidia_rotator:
                         recent_context = await self._ai_select_qa_memories(
-                            question, qa_memories, nvidia_rotator, "recent"
+                            question, qa_memories, nvidia_rotator, "recent", user_id
                         )
                     else:
                         recent_context = await self._semantic_select_qa_memories(
@@ -93,7 +93,7 @@ class ExecutionEngine:
                 if all_memories:
                     if params["use_ai_selection"] and nvidia_rotator:
                         semantic_context = await self._ai_select_qa_memories(
-                            question, all_memories, nvidia_rotator, "semantic"
+                            question, all_memories, nvidia_rotator, "semantic", user_id
                         )
                     else:
                         semantic_context = await self._semantic_select_qa_memories(
@@ -223,7 +223,7 @@ class ExecutionEngine:
                 if all_memories:
                     if params["use_ai_selection"] and nvidia_rotator:
                         semantic_context = await self._ai_select_qa_memories(
-                            question, all_memories, nvidia_rotator, "semantic"
+                            question, all_memories, nvidia_rotator, "semantic", user_id
                         )
                     else:
                         semantic_context = await self._semantic_select_qa_memories(
@@ -272,7 +272,7 @@ class ExecutionEngine:
                 if recent_memories:
                     if params["use_ai_selection"] and nvidia_rotator:
                         recent_context = await self._ai_select_qa_memories(
-                            question, recent_memories, nvidia_rotator, "recent"
+                            question, recent_memories, nvidia_rotator, "recent", user_id
                         )
                     else:
                         recent_context = await self._semantic_select_qa_memories(
@@ -287,7 +287,7 @@ class ExecutionEngine:
                 if all_memories:
                     if params["use_ai_selection"] and nvidia_rotator:
                         semantic_context = await self._ai_select_qa_memories(
-                            question, all_memories, nvidia_rotator, "semantic"
+                            question, all_memories, nvidia_rotator, "semantic", user_id
                         )
                     else:
                         semantic_context = await self._semantic_select_qa_memories(
@@ -315,7 +315,7 @@ class ExecutionEngine:
             return "", "", {"error": str(e)}
     
     async def _ai_select_qa_memories(self, question: str, memories: List[Dict[str, Any]], 
-                                   nvidia_rotator, context_type: str) -> str:
+                                   nvidia_rotator, context_type: str, user_id: str = "") -> str:
         """Use AI to select the most relevant Q&A memories"""
         try:
             from utils.api.router import generate_answer_with_model
@@ -349,9 +349,24 @@ Available Q&A Memories:
 
 Select the most relevant Q&A memories:"""
             
+            # Track memory agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker and user_id:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memory",
+                        action="select",
+                        context="memory_selection",
+                        metadata={"context_type": context_type, "memories_count": len(memories)}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better memory selection reasoning
             from utils.api.router import qwen_chat_completion
-            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "memory_selection")
             
             return response.strip()
             

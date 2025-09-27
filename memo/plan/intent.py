@@ -56,7 +56,7 @@ class IntentDetector:
             r'\b(according to|based on|from|in)\b'
         ]
     
-    async def detect_intent(self, question: str, nvidia_rotator=None) -> QueryIntent:
+    async def detect_intent(self, question: str, nvidia_rotator=None, user_id: str = "") -> QueryIntent:
         """Detect user intent from the question"""
         try:
             question_lower = question.lower()
@@ -80,7 +80,7 @@ class IntentDetector:
             # Use AI for more sophisticated intent detection
             if nvidia_rotator:
                 try:
-                    return await self._ai_intent_detection(question, nvidia_rotator)
+                    return await self._ai_intent_detection(question, nvidia_rotator, user_id)
                 except Exception as e:
                     logger.warning(f"[INTENT_DETECTOR] AI intent detection failed: {e}")
             
@@ -91,7 +91,7 @@ class IntentDetector:
             logger.warning(f"[INTENT_DETECTOR] Intent detection failed: {e}")
             return QueryIntent.CONTINUATION
     
-    async def _ai_intent_detection(self, question: str, nvidia_rotator) -> QueryIntent:
+    async def _ai_intent_detection(self, question: str, nvidia_rotator, user_id: str = "") -> QueryIntent:
         """Use AI to detect user intent more accurately"""
         try:
             from utils.api.router import generate_answer_with_model
@@ -110,9 +110,24 @@ Respond with only the intent name (e.g., "ENHANCEMENT")."""
             
             user_prompt = f"Question: {question}\n\nWhat is the user's intent?"
             
+            # Track memory agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker and user_id:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memory",
+                        action="intent",
+                        context="intent_detection",
+                        metadata={"question": question[:100]}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better intent detection reasoning
             from utils.api.router import qwen_chat_completion
-            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "intent_detection")
             
             # Parse response
             response_upper = response.strip().upper()

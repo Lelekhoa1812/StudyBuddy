@@ -79,7 +79,7 @@ class RetrievalManager:
             
             # Enhance question/instructions with context if beneficial
             enhanced_input, context_used = await self._enhance_input_with_context(
-                question, recent_context, semantic_context, nvidia_rotator, conversation_mode
+                question, recent_context, semantic_context, nvidia_rotator, conversation_mode, user_id
             )
             
             # Update session tracking
@@ -161,12 +161,12 @@ class RetrievalManager:
     
     async def _enhance_input_with_context(self, original_input: str, recent_context: str, 
                                         semantic_context: str, nvidia_rotator, 
-                                        conversation_mode: str) -> Tuple[str, bool]:
+                                        conversation_mode: str, user_id: str = "") -> Tuple[str, bool]:
         """Enhance input with relevant context if beneficial"""
         try:
             # Determine if enhancement would be beneficial
             should_enhance = await self._should_enhance_input(
-                original_input, recent_context, semantic_context, nvidia_rotator
+                original_input, recent_context, semantic_context, nvidia_rotator, user_id
             )
             
             if not should_enhance:
@@ -174,16 +174,16 @@ class RetrievalManager:
             
             # Enhance based on conversation mode
             if conversation_mode == "chat":
-                return await self._enhance_question(original_input, recent_context, semantic_context, nvidia_rotator)
+                return await self._enhance_question(original_input, recent_context, semantic_context, nvidia_rotator, user_id)
             else:  # report mode
-                return await self._enhance_instructions(original_input, recent_context, semantic_context, nvidia_rotator)
+                return await self._enhance_instructions(original_input, recent_context, semantic_context, nvidia_rotator, user_id)
                 
         except Exception as e:
             logger.warning(f"[RETRIEVAL_MANAGER] Input enhancement failed: {e}")
             return original_input, False
     
     async def _should_enhance_input(self, original_input: str, recent_context: str, 
-                                  semantic_context: str, nvidia_rotator) -> bool:
+                                  semantic_context: str, nvidia_rotator, user_id: str = "") -> bool:
         """Determine if input should be enhanced with context"""
         try:
             # Don't enhance if no context available
@@ -221,9 +221,24 @@ Semantic: {semantic_context[:200]}...
 
 Should this question be enhanced with context?"""
                     
+                    # Track memory agent usage
+                    try:
+                        from utils.analytics import get_analytics_tracker
+                        tracker = get_analytics_tracker()
+                        if tracker and user_id:
+                            await tracker.track_agent_usage(
+                                user_id=user_id,
+                                agent_name="memory",
+                                action="enhance",
+                                context="enhancement_decision",
+                                metadata={"input": original_input[:100]}
+                            )
+                    except Exception:
+                        pass
+                    
                     # Use Qwen for better context enhancement reasoning
                     from utils.api.router import qwen_chat_completion
-                    response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+                    response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "enhancement_decision")
                     
                     return "YES" in response.upper()
                     
@@ -239,7 +254,7 @@ Should this question be enhanced with context?"""
             return False
     
     async def _enhance_question(self, question: str, recent_context: str, 
-                              semantic_context: str, nvidia_rotator) -> Tuple[str, bool]:
+                              semantic_context: str, nvidia_rotator, user_id: str = "") -> Tuple[str, bool]:
         """Enhance question with context"""
         try:
             from utils.api.router import generate_answer_with_model
@@ -267,9 +282,24 @@ RELEVANT CONTEXT:
 
 Create an enhanced version that incorporates this context naturally."""
             
+            # Track memory agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker and user_id:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memory",
+                        action="enhance",
+                        context="question_enhancement",
+                        metadata={"question": question[:100]}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better question enhancement reasoning
             from utils.api.router import qwen_chat_completion
-            enhanced_question = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            enhanced_question = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "question_enhancement")
             
             return enhanced_question.strip(), True
             
@@ -278,7 +308,7 @@ Create an enhanced version that incorporates this context naturally."""
             return question, False
     
     async def _enhance_instructions(self, instructions: str, recent_context: str, 
-                                  semantic_context: str, nvidia_rotator) -> Tuple[str, bool]:
+                                  semantic_context: str, nvidia_rotator, user_id: str = "") -> Tuple[str, bool]:
         """Enhance report instructions with context"""
         try:
             from utils.api.router import generate_answer_with_model
@@ -306,9 +336,24 @@ RELEVANT CONTEXT:
 
 Create an enhanced version that incorporates this context naturally."""
             
+            # Track memory agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker and user_id:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memory",
+                        action="enhance",
+                        context="instruction_enhancement",
+                        metadata={"instructions": instructions[:100]}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better instruction enhancement reasoning
             from utils.api.router import qwen_chat_completion
-            enhanced_instructions = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator)
+            enhanced_instructions = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "instruction_enhancement")
             
             return enhanced_instructions.strip(), True
             

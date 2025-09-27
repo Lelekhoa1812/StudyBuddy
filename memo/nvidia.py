@@ -40,12 +40,12 @@ async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rot
         logger.warning(f"NVIDIA chat error: {e} • response: {data}")
         return ""
 
-async def qwen_chat(system_prompt: str, user_prompt: str, rotator) -> str:
+async def qwen_chat(system_prompt: str, user_prompt: str, rotator, user_id: str = "") -> str:
     """
     Qwen chat call for medium complexity tasks with thinking mode.
     """
     try:
-        return await qwen_chat_completion(system_prompt, user_prompt, rotator)
+        return await qwen_chat_completion(system_prompt, user_prompt, rotator, user_id, "memo_qwen_chat")
     except Exception as e:
         logger.warning(f"Qwen chat error: {e}")
         return ""

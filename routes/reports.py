@@ -155,7 +155,7 @@ async def generate_report(
     # Step 2: Execute detailed subtasks based on CoT plan
     logger.info("[REPORT] Executing detailed subtasks")
     update_report_status(session_id, "processing", "Processing data...", 40)
-    detailed_analysis = await execute_detailed_subtasks(cot_plan, context_text, web_context_block, eff_name, nvidia_rotator, gemini_rotator)
+    detailed_analysis = await execute_detailed_subtasks(cot_plan, context_text, web_context_block, eff_name, nvidia_rotator, gemini_rotator, user_id)
     
     # Step 3: Synthesize comprehensive report from detailed analysis
     logger.info("[REPORT] Synthesizing comprehensive report")
@@ -453,7 +453,7 @@ Create a simple plan for this report."""
         }
 
 
-async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
+async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str, web_context: str, filename: str, nvidia_rotator, gemini_rotator, user_id: str = "") -> Dict[str, Any]:
     """Execute detailed analysis for each subtask with hierarchical section assignment and CoT references."""
     detailed_analysis = {}
     synthesis_strategy = cot_plan.get("synthesis_strategy", {})
@@ -1326,7 +1326,8 @@ Return the renumbered headings in the format: "level: new_number: heading_text" 
 @app.post("/mermaid/fix")
 async def fix_mermaid_syntax(
     mermaid_code: str = Form(...),
-    error_message: str = Form("")
+    error_message: str = Form(""),
+    user_id: str = Form("system")
 ):
     """
     Fix Mermaid diagram syntax using AI for UI rendering.

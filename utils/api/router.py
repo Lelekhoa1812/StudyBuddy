@@ -190,7 +190,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             # Fallback: Qwen → NVIDIA_SMALL
             logger.info("Falling back from Qwen to NVIDIA_SMALL")
             fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
-            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, context)
     elif provider == "nvidia_large":
         # Use NVIDIA Large (GPT-OSS) for hard/long context tasks with fallback
         try:
@@ -200,7 +200,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             # Fallback: NVIDIA_LARGE → NVIDIA_SMALL
             logger.info("Falling back from NVIDIA_LARGE to NVIDIA_SMALL")
             fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
-            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, context)
     elif provider == "nvidia_coder":
         # Use NVIDIA Coder for code generation tasks with fallback
         try:
@@ -211,7 +211,7 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             # Fallback: NVIDIA_CODER → NVIDIA_SMALL
             logger.info("Falling back from NVIDIA_CODER to NVIDIA_SMALL")
             fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
-            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+            return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, context)
 
     return "Unsupported provider."
 

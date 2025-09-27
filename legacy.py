@@ -791,7 +791,7 @@ Return only the variations, one per line, no numbering or extra text."""
         
         from utils.api.router import generate_answer_with_model
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id="system", context="legacy_analysis")
         
         # Parse variations
         variations = [line.strip() for line in response.split('\n') if line.strip()]

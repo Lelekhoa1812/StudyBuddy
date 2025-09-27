@@ -79,7 +79,9 @@ Return only the session name, nothing else."""
                 system_prompt=sys_prompt,
                 user_prompt=user_prompt,
                 gemini_rotator=None,
-                nvidia_rotator=nvidia_rotator
+                nvidia_rotator=nvidia_rotator,
+                user_id=user_id,
+                context="session_naming"
             )
             
             logger.info(f"[NAMER] Raw API response: {response}")

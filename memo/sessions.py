@@ -174,7 +174,9 @@ Is this a context switch?"""
                         system_prompt=sys_prompt,
                         user_prompt=user_prompt,
                         gemini_rotator=None,
-                        nvidia_rotator=nvidia_rotator
+                        nvidia_rotator=nvidia_rotator,
+                        user_id="system",
+                        context="context_switch_detection"
                     )
                     
                     # Parse JSON response

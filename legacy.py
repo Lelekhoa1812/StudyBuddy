@@ -673,7 +673,7 @@ async def generate_report(
         
         try:
             selection_filter = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
-            filter_response = await generate_answer_with_model(selection_filter, filter_sys, filter_user, gemini_rotator, nvidia_rotator)
+            filter_response = await generate_answer_with_model(selection_filter, filter_sys, filter_user, gemini_rotator, nvidia_rotator, user_id="system", context="legacy_filter")
             logger.info(f"[REPORT] Raw filter response: {filter_response}")
             # Try to parse the filter response to get relevant chunks
             import json
@@ -709,7 +709,7 @@ async def generate_report(
     try:
         # Step 1: Outline with Flash/Med
         selection_outline = {"provider": "gemini", "model": os.getenv("GEMINI_MED", "gemini-2.5-flash")}
-        outline_md = await generate_answer_with_model(selection_outline, sys_outline, user_outline, gemini_rotator, nvidia_rotator)
+        outline_md = await generate_answer_with_model(selection_outline, sys_outline, user_outline, gemini_rotator, nvidia_rotator, user_id="system", context="legacy_outline")
     except Exception as e:
         logger.warning(f"Report outline failed: {e}")
         outline_md = "# Report Outline\n\n- Introduction\n- Key Topics\n- Conclusion"
@@ -731,7 +731,7 @@ async def generate_report(
 
     try:
         selection_report = {"provider": "gemini", "model": os.getenv("GEMINI_PRO", "gemini-2.5-pro")}
-        report_md = await generate_answer_with_model(selection_report, sys_report, user_report, gemini_rotator, nvidia_rotator)
+        report_md = await generate_answer_with_model(selection_report, sys_report, user_report, gemini_rotator, nvidia_rotator, user_id="system", context="legacy_report")
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
         report_md = outline_md + "\n\n" + file_summary

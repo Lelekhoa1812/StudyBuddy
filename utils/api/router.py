@@ -135,11 +135,11 @@ async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: s
             if model in [GEMINI_PRO, GEMINI_MED]:
                 logger.info(f"Falling back from {model} to NVIDIA_LARGE")
                 fallback_selection = {"provider": "nvidia_large", "model": NVIDIA_LARGE}
-                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, context)
             elif model == GEMINI_SMALL:
                 logger.info(f"Falling back from {model} to NVIDIA_SMALL")
                 fallback_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
-                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+                return await generate_answer_with_model(fallback_selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, context)
             else:
                 logger.error(f"No fallback defined for Gemini model: {model}")
                 return "I couldn't parse the model response."

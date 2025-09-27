@@ -732,7 +732,9 @@ async def _chat_impl(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             gemini_rotator=gemini_rotator,
-            nvidia_rotator=nvidia_rotator
+            nvidia_rotator=nvidia_rotator,
+            user_id=user_id,
+            context="chat"
         )
         logger.info(f"[CHAT] Answer generated successfully, length: {len(answer)}")
     except Exception as e:
@@ -930,7 +932,9 @@ async def chat_with_search(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             gemini_rotator=gemini_rotator,
-            nvidia_rotator=nvidia_rotator
+            nvidia_rotator=nvidia_rotator,
+            user_id=user_id,
+            context="chat"
         )
     except Exception as e:
         logger.warning(f"[CHAT] Web-augmented LLM error: {e}")

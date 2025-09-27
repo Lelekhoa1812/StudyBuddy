@@ -89,9 +89,25 @@ def select_model(question: str, context: str) -> Dict[str, Any]:
 
 
 async def generate_answer_with_model(selection: Dict[str, Any], system_prompt: str, user_prompt: str,
-                                     gemini_rotator: APIKeyRotator, nvidia_rotator: APIKeyRotator) -> str:
+                                     gemini_rotator: APIKeyRotator, nvidia_rotator: APIKeyRotator, 
+                                     user_id: str = None, context: str = "") -> str:
     provider = selection["provider"]
     model = selection["model"]
+    
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker and user_id:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=model,
+                provider=provider,
+                context=context or "api_call",
+                metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
+            )
+    except Exception as e:
+        logger.debug(f"[ROUTER] Analytics tracking failed: {e}")
 
     if provider == "gemini":
         # Try Gemini first

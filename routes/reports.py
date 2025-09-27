@@ -296,7 +296,7 @@ Create a detailed plan for this report."""
         logger.info(f"[REPORT] System prompt length: {len(sys_prompt)}")
         logger.info(f"[REPORT] User prompt length: {len(user_prompt)}")
         
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_planning")
         
         # Parse JSON response
         import json
@@ -406,7 +406,7 @@ FILE SUMMARY: {file_summary[:500]}
 Create a simple plan for this report."""
 
             simple_selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
-            simple_response = await generate_answer_with_model(simple_selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator)
+            simple_response = await generate_answer_with_model(simple_selection, simple_sys_prompt, simple_user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_planning_simple")
             simple_json_text = simple_response.strip()
             
             if simple_json_text.startswith('```json'):
@@ -662,7 +662,7 @@ Perform the comprehensive analysis as specified, following all sub-actions, meet
 
     try:
         selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
-        analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        analysis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_analysis")
         return analysis.strip()
         
     except Exception as e:
@@ -746,7 +746,7 @@ Synthesize these analyses into a comprehensive, coherent section with proper hie
 
     try:
         selection = {"provider": "gemini", "model": "gemini-2.5-flash"}
-        synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        synthesis = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_synthesis")
         return synthesis.strip()
         
     except Exception as e:
@@ -884,7 +884,7 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
     try:
         # Use Gemini Pro for final synthesis (better for long-form content)
         selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
-        report = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        report = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_final")
         
         # Post-process to remove any remaining meta-commentary and ensure proper formatting
         report = remove_meta_commentary(report)
@@ -935,7 +935,7 @@ async def generate_code_artifacts(subsection_id: str, task: str, reasoning: str,
         "Produce the code files and explanations as specified."
     )
     selection = {"provider": "gemini", "model": "gemini-2.5-pro"}
-    code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+    code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_coding")
     return code_md.strip()
 
 def should_generate_mermaid(instructions: str, report_text: str) -> bool:
@@ -970,7 +970,7 @@ async def generate_mermaid_diagram(instructions: str, detailed_analysis: Dict[st
 
         # Use NVIDIA_LARGE for diagram synthesis
         selection = {"provider": "nvidia_large", "model": os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b")}
-        diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+        diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_diagram")
         # Strip accidental code fences
         diagram = diagram.strip()
         if diagram.startswith("```"):
@@ -1272,7 +1272,7 @@ Return the renumbered headings in the format: "level: new_number: heading_text" 
         
         # Use NVIDIA model for heading re-numbering
         selection = {"provider": "nvidia", "model": "meta/llama-3.1-8b-instruct"}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator)
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id, "report_heading_fix")
         
         # Parse the AI response
         renumbered_headings = []

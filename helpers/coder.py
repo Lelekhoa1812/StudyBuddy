@@ -73,7 +73,7 @@ async def generate_code_artifacts(
             )
     except Exception:
         pass
-    code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+    code_md = await generate_answer_with_model(selection, system_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "coding")
     code_md = (code_md or "").strip()
 
     if not code_md:

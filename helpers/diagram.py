@@ -92,7 +92,7 @@ async def generate_mermaid_diagram(
             )
     except Exception:
         pass
-    diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator)
+    diagram = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "diagram")
     diagram = (diagram or "").strip()
 
     # Strip accidental code fences
@@ -186,7 +186,7 @@ Please provide the corrected Mermaid code that will render successfully."""
 
         # Use NVIDIA_LARGE for better error correction
         selection = {"provider": "nvidia_large", "model": "openai/gpt-oss-120b"}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, None)
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, None, user_id, "diagram_fix")
         
         if response:
             # Clean up the response

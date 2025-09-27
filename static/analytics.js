@@ -208,12 +208,14 @@
     sortedModels.forEach(model => {
       const percentage = totalUsage > 0 ? Math.round((model.count / totalUsage) * 100) : 0;
       const lastUsed = new Date(model.last_used * 1000).toLocaleDateString();
+      const modelName = model.model_name || model._id;
+      const provider = model.provider || 'unknown';
       
       html += `
         <div class="model-usage-item">
           <div class="model-info">
-            <div class="model-name">${model._id}</div>
-            <div class="model-provider">${model.provider}</div>
+            <div class="model-name">${modelName}</div>
+            <div class="model-provider">${provider}</div>
           </div>
           <div class="model-stats">
             <div class="model-count">${model.count} requests</div>
@@ -291,11 +293,11 @@
     let html = '<div class="daily-trends-chart">';
     sortedDaily.forEach(day => {
       const date = new Date(day._id.year, day._id.month - 1, day._id.day);
-      const dateStr = date.toLocaleDateString();
-      const height = maxUsage > 0 ? (day.total_requests / maxUsage) * 100 : 0;
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const height = maxUsage > 0 ? Math.max(10, (day.total_requests / maxUsage) * 100) : 10;
       
       html += `
-        <div class="daily-bar">
+        <div class="daily-bar" title="${day.total_requests} requests on ${date.toLocaleDateString()}">
           <div class="daily-bar-fill" style="height: ${height}%"></div>
           <div class="daily-label">${dateStr}</div>
           <div class="daily-count">${day.total_requests}</div>

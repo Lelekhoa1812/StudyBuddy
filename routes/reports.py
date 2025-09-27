@@ -137,7 +137,7 @@ async def generate_report(
         )
     
     # Use enhanced instructions for better CoT planning
-    cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator, gemini_rotator)
+    cot_plan = await generate_cot_plan(enhanced_instructions, file_summary, context_text, web_context_block, nvidia_rotator, gemini_rotator, user_id)
     # Track planning agent
     try:
         tracker = get_analytics_tracker()
@@ -224,7 +224,7 @@ async def generate_report_pdf(
 
 
 # ────────────────────────────── Chain of Thought Report Generation ──────────────────
-async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator, gemini_rotator) -> Dict[str, Any]:
+async def generate_cot_plan(instructions: str, file_summary: str, context_text: str, web_context: str, nvidia_rotator, gemini_rotator, user_id: str = "") -> Dict[str, Any]:
     """Generate a detailed Chain of Thought plan for report generation using NVIDIA."""
     sys_prompt = """You are an expert report planner. Create a comprehensive plan for generating a detailed, professional report.
 
@@ -548,7 +548,7 @@ async def execute_detailed_subtasks(cot_plan: Dict[str, Any], context_text: str,
             await _asyncio.gather(*subtask_tasks)
 
         section_synthesis = await synthesize_section_with_cot_references(
-            section_analysis, synthesis_strategy, agent_context_shared, nvidia_rotator, gemini_rotator
+            section_analysis, synthesis_strategy, agent_context_shared, nvidia_rotator, gemini_rotator, user_id
         )
         section_analysis["section_synthesis"] = section_synthesis
         agent_context_shared[f"section_{section_id}"] = {
@@ -681,7 +681,7 @@ async def analyze_subtask_comprehensive(task: str, reasoning: str, sources_neede
 
 
 async def synthesize_section_with_cot_references(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], 
-                                               agent_context: Dict[str, Any], nvidia_rotator, gemini_rotator) -> str:
+                                               agent_context: Dict[str, Any], nvidia_rotator, gemini_rotator, user_id: str = "") -> str:
     """Synthesize all subtask results within a section with CoT references and hierarchical context."""
     
     section_title = section_analysis.get("title", "Unknown Section")
@@ -754,10 +754,10 @@ Synthesize these analyses into a comprehensive, coherent section with proper hie
         return f"Synthesis for '{section_title}' could not be completed due to processing error."
 
 
-async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator, gemini_rotator) -> str:
+async def synthesize_section_analysis(section_analysis: Dict[str, Any], synthesis_strategy: Dict[str, str], nvidia_rotator, gemini_rotator, user_id: str = "") -> str:
     """Legacy function for backward compatibility."""
     return await synthesize_section_with_cot_references(
-        section_analysis, synthesis_strategy, {}, nvidia_rotator, gemini_rotator
+        section_analysis, synthesis_strategy, {}, nvidia_rotator, gemini_rotator, user_id
     )
 
 
@@ -916,7 +916,7 @@ Create a comprehensive, authoritative report with proper hierarchical structure 
         fallback_report += f"\n\n## Conclusion\n\n{instructions}"
         return fallback_report
 
-async def generate_code_artifacts(subsection_id: str, task: str, reasoning: str, context_text: str, web_context: str, gemini_rotator, nvidia_rotator) -> str:
+async def generate_code_artifacts(subsection_id: str, task: str, reasoning: str, context_text: str, web_context: str, gemini_rotator, nvidia_rotator, user_id: str = "") -> str:
     """Generate code (files-by-files) with explanations using Gemini Pro, grounded in context."""
     system_prompt = (
         "You are a senior software engineer. Generate production-quality code that fulfills the TASK,\n"
@@ -946,7 +946,7 @@ def should_generate_mermaid(instructions: str, report_text: str) -> bool:
         return True
     return False
 
-async def generate_mermaid_diagram(instructions: str, detailed_analysis: Dict[str, Any], gemini_rotator, nvidia_rotator) -> str:
+async def generate_mermaid_diagram(instructions: str, detailed_analysis: Dict[str, Any], gemini_rotator, nvidia_rotator, user_id: str = "") -> str:
     """Use NVIDIA_LARGE (GPT-OSS) to synthesize a concise Mermaid diagram when helpful."""
     try:
         # Build a compact overview context from section titles and key insights

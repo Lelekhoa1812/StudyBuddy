@@ -1162,7 +1162,9 @@ async def _chat_impl(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             gemini_rotator=gemini_rotator,
-            nvidia_rotator=nvidia_rotator
+            nvidia_rotator=nvidia_rotator,
+            user_id="system",
+            context="legacy_chat"
         )
         logger.info(f"[CHAT] Answer generated successfully, length: {len(answer)}")
     except Exception as e:

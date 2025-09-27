@@ -95,6 +95,18 @@ class IntentDetector:
         """Use AI to detect user intent more accurately"""
         try:
             from utils.api.router import generate_answer_with_model
+            from utils.analytics import get_analytics_tracker
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="detect",
+                    context="intent_detection",
+                    metadata={"question": question[:100]}
+                )
             
             sys_prompt = """You are an expert at analyzing user intent in questions.
 
@@ -124,6 +136,17 @@ Respond with only the intent name (e.g., "ENHANCEMENT")."""
                     )
             except Exception:
                 pass
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="detect",
+                    context="intent_detection",
+                    metadata={"question": question[:100]}
+                )
             
             # Use Qwen for better intent detection reasoning
             from utils.api.router import qwen_chat_completion

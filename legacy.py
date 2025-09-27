@@ -970,6 +970,21 @@ async def _chat_impl(
             numbered = [{"id": i+1, "text": s} for i, s in enumerate(recent3)]
             user = f"Question: {question}\nCandidates:\n{json.dumps(numbered, ensure_ascii=False)}\nSelect any related items and output ONLY their 'text' values concatenated."
             try:
+                # Track model usage for analytics
+                try:
+                    from utils.analytics import get_analytics_tracker
+                    tracker = get_analytics_tracker()
+                    if tracker:
+                        await tracker.track_model_usage(
+                            user_id="system",
+                            model_name=os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
+                            provider="nvidia",
+                            context="legacy_recent_related",
+                            metadata={"question": question[:100]}
+                        )
+                except Exception:
+                    pass
+                
                 from utils.api.rotator import robust_post_json
                 key = nvidia_rotator.get_key()
                 url = "https://integrate.api.nvidia.com/v1/chat/completions"

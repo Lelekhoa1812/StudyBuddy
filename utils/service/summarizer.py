@@ -11,8 +11,24 @@ logger = get_logger("SUM", __name__)
 ROTATOR = APIKeyRotator(prefix="NVIDIA_API_", max_slots=5)
 
 
-async def llama_chat(messages, temperature: float = 0.2) -> str:
+async def llama_chat(messages, temperature: float = 0.2, user_id: str = "system", context: str = "llama_chat") -> str:
   model = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")
+  
+  # Track model usage for analytics
+  try:
+    from utils.analytics import get_analytics_tracker
+    tracker = get_analytics_tracker()
+    if tracker:
+      await tracker.track_model_usage(
+        user_id=user_id,
+        model_name=model,
+        provider="nvidia",
+        context=context,
+        metadata={"temperature": temperature, "message_count": len(messages)}
+      )
+  except Exception:
+    pass
+  
   # Get key via rotator (supports rotation/retries in robust_post_json)
   key = ROTATOR.get_key()
   if not key:
@@ -49,7 +65,7 @@ async def nvidia_small_summarize(text: str, max_sentences: int = 3) -> str:
     return await llama_chat([
       {"role": "system", "content": system},
       {"role": "user", "content": user},
-    ])
+    ], user_id="system", context="llama_summarize")
   except Exception as e:
     logger.warning(f"NVIDIA Small summarization failed: {e}; using fallback")
     return naive_fallback(text, max_sentences)

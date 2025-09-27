@@ -319,6 +319,18 @@ class ExecutionEngine:
         """Use AI to select the most relevant Q&A memories"""
         try:
             from utils.api.router import generate_answer_with_model
+            from utils.analytics import get_analytics_tracker
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="select",
+                    context="memory_selection",
+                    metadata={"question": question[:100], "memories_count": len(memories)}
+                )
             
             if not memories:
                 return ""
@@ -363,6 +375,17 @@ Select the most relevant Q&A memories:"""
                     )
             except Exception:
                 pass
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="select",
+                    context="memory_selection",
+                    metadata={"question": question[:100], "memories_count": len(memories)}
+                )
             
             # Use Qwen for better memory selection reasoning
             from utils.api.router import qwen_chat_completion

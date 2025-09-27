@@ -162,6 +162,18 @@ class ConsolidationManager:
             if nvidia_rotator:
                 try:
                     from utils.api.router import generate_answer_with_model
+                    from utils.analytics import get_analytics_tracker
+                    
+                    # Track memory agent usage
+                    tracker = get_analytics_tracker()
+                    if tracker:
+                        await tracker.track_agent_usage(
+                            user_id=user_id,
+                            agent_name="memory",
+                            action="consolidate",
+                            context="memory_consolidation",
+                            metadata={"count": len(contents)}
+                        )
                     
                     sys_prompt = """You are an expert at consolidating similar conversation memories.
 
@@ -193,6 +205,17 @@ Create a single consolidated memory:"""
                             )
                     except Exception:
                         pass
+                    
+                    # Track memory agent usage
+                    tracker = get_analytics_tracker()
+                    if tracker:
+                        await tracker.track_agent_usage(
+                            user_id=user_id,
+                            agent_name="memory",
+                            action="consolidate",
+                            context="memory_consolidation",
+                            metadata={"count": len(contents)}
+                        )
                     
                     # Use Qwen for better memory consolidation reasoning
                     from utils.api.router import qwen_chat_completion

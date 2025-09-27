@@ -203,6 +203,18 @@ class RetrievalManager:
             if nvidia_rotator:
                 try:
                     from utils.api.router import generate_answer_with_model
+                    from utils.analytics import get_analytics_tracker
+                    
+                    # Track memory agent usage
+                    tracker = get_analytics_tracker()
+                    if tracker:
+                        await tracker.track_agent_usage(
+                            user_id=user_id,
+                            agent_name="memory",
+                            action="enhance",
+                            context="enhancement_decision",
+                            metadata={"question": question[:100]}
+                        )
                     
                     sys_prompt = """You are an expert at determining if a user's question would benefit from additional context.
 
@@ -236,11 +248,22 @@ Should this question be enhanced with context?"""
                     except Exception:
                         pass
                     
-                    # Use Qwen for better context enhancement reasoning
-                    from utils.api.router import qwen_chat_completion
-                    response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "enhancement_decision")
-                    
-                    return "YES" in response.upper()
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="enhance",
+                    context="enhancement_decision",
+                    metadata={"question": question[:100]}
+                )
+            
+            # Use Qwen for better context enhancement reasoning
+            from utils.api.router import qwen_chat_completion
+            response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "enhancement_decision")
+            
+            return "YES" in response.upper()
                     
                 except Exception as e:
                     logger.warning(f"[RETRIEVAL_MANAGER] Enhancement decision failed: {e}")
@@ -258,6 +281,18 @@ Should this question be enhanced with context?"""
         """Enhance question with context"""
         try:
             from utils.api.router import generate_answer_with_model
+            from utils.analytics import get_analytics_tracker
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="enhance",
+                    context="question_enhancement",
+                    metadata={"question": question[:100]}
+                )
             
             sys_prompt = """You are an expert at enhancing user questions with relevant conversation context.
 
@@ -297,6 +332,17 @@ Create an enhanced version that incorporates this context naturally."""
             except Exception:
                 pass
             
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="enhance",
+                    context="question_enhancement",
+                    metadata={"question": question[:100]}
+                )
+            
             # Use Qwen for better question enhancement reasoning
             from utils.api.router import qwen_chat_completion
             enhanced_question = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "question_enhancement")
@@ -312,6 +358,18 @@ Create an enhanced version that incorporates this context naturally."""
         """Enhance report instructions with context"""
         try:
             from utils.api.router import generate_answer_with_model
+            from utils.analytics import get_analytics_tracker
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="enhance",
+                    context="instruction_enhancement",
+                    metadata={"instructions": instructions[:100]}
+                )
             
             sys_prompt = """You are an expert at enhancing report instructions with relevant conversation context.
 
@@ -350,6 +408,17 @@ Create an enhanced version that incorporates this context naturally."""
                     )
             except Exception:
                 pass
+            
+            # Track memory agent usage
+            tracker = get_analytics_tracker()
+            if tracker:
+                await tracker.track_agent_usage(
+                    user_id=user_id,
+                    agent_name="memory",
+                    action="enhance",
+                    context="instruction_enhancement",
+                    metadata={"instructions": instructions[:100]}
+                )
             
             # Use Qwen for better instruction enhancement reasoning
             from utils.api.router import qwen_chat_completion

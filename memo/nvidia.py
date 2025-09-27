@@ -18,10 +18,25 @@ logger = get_logger("NVIDIA_INTEGRATION", __name__)
 NVIDIA_SMALL = os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")
 NVIDIA_MEDIUM = os.getenv("NVIDIA_MEDIUM", "qwen/qwen3-next-80b-a3b-thinking")
 
-async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rotator) -> str:
+async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rotator, user_id: str = "system", context: str = "nvidia_chat") -> str:
     """
     Minimal NVIDIA Chat call that enforces no-comment concise outputs.
     """
+    # Track model usage for analytics
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_model_usage(
+                user_id=user_id,
+                model_name=NVIDIA_SMALL,
+                provider="nvidia",
+                context=context,
+                metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
+            )
+    except Exception:
+        pass
+    
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     payload = {
         "model": NVIDIA_SMALL,
@@ -74,7 +89,7 @@ async def summarize_qa(question: str, answer: str, rotator) -> str:
     sys = "You are a terse summarizer. Output exactly two lines:\nq: <short question summary>\na: <short answer summary>\nNo extra text."
     user = f"Question:\n{question}\n\nAnswer:\n{answer}"
     key = rotator.get_key()
-    out = await nvidia_chat(sys, user, key, rotator)
+    out = await nvidia_chat(sys, user, key, rotator, user_id="system", context="memo_nvidia_chat")
     
     # Basic guard if the model returns extra prose
     lines = [ln.strip() for ln in out.splitlines() if ln.strip()]

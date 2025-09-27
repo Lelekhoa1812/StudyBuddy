@@ -1,5 +1,5 @@
 # routes/projects.py
-import uuid
+import uuid, os
 import time
 from datetime import datetime, timezone
 from fastapi import Form, HTTPException

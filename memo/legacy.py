@@ -7,6 +7,7 @@ In-memory LRU system for backward compatibility.
 
 from collections import deque, defaultdict
 from typing import List, Dict
+import os
 
 from utils.logger import get_logger
 

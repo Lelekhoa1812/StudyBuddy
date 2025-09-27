@@ -4,7 +4,7 @@ Session Auto-Naming Module
 This module handles automatic naming of chat sessions based on the first user query.
 Uses NVIDIA_SMALL API to generate concise, descriptive session names.
 """
-
+import os
 import asyncio
 from typing import Optional
 from utils.logger import get_logger

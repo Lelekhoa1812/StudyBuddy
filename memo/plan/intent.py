@@ -5,7 +5,7 @@ Intent Detection
 Handles user intent detection for memory planning.
 """
 
-import re
+import re, os
 from typing import List, Dict, Any, Tuple, Optional
 from enum import Enum
 

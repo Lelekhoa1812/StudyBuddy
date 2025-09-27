@@ -1,5 +1,5 @@
 # routes/auth.py
-import uuid, time, hashlib, secrets
+import uuid, time, hashlib, secrets, os
 from typing import Optional
 from fastapi import Form, HTTPException
 

@@ -6,7 +6,7 @@ Handles intelligent context retrieval, enhancement decisions,
 and input optimization for natural conversation flow.
 """
 
-import re
+import re, os
 from typing import List, Dict, Any, Tuple, Optional
 
 from utils.logger import get_logger

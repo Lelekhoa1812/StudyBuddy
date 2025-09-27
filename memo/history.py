@@ -6,6 +6,7 @@ Functions for managing conversation history and context.
 """
 
 from typing import List, Dict, Any, Tuple, Optional
+import os
 
 from utils.logger import get_logger
 from memo.nvidia import summarize_qa, files_relevance, related_recent_context

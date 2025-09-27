@@ -4,6 +4,7 @@ Analytics API Routes
 
 Provides endpoints for retrieving user and global analytics data.
 """
+import os
 
 from fastapi import HTTPException, Query
 from typing import Optional, Dict, Any, List

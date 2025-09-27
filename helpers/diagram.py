@@ -4,6 +4,7 @@ helpers/diagram.py
 Mermaid diagram generation with NVIDIA_LARGE (gpt-oss). Includes a CoT retry
 mechanism that feeds back rendering errors to refine the diagram prompt.
 """
+import os
 
 from typing import Dict, Any
 from utils.logger import get_logger

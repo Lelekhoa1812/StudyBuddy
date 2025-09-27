@@ -1,6 +1,6 @@
 from helpers.setup import app, rag, logger
 from helpers.models import HealthResponse
-
+import os
 
 @app.get("/healthz", response_model=HealthResponse)
 def health():

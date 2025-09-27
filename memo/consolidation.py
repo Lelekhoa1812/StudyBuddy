@@ -6,7 +6,7 @@ Handles memory consolidation, pruning, and optimization
 to prevent information overload and maintain performance.
 """
 
-import re
+import re, os
 from typing import List, Dict, Any, Optional
 
 from utils.logger import get_logger

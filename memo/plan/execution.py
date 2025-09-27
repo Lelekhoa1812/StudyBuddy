@@ -6,6 +6,7 @@ Handles memory retrieval execution based on planned strategies.
 """
 
 from typing import List, Dict, Any, Tuple, Optional
+import os
 
 from utils.logger import get_logger
 from utils.rag.embeddings import EmbeddingClient

@@ -6,7 +6,7 @@ Handles conversation session tracking, context switching detection,
 and conversation insights.
 """
 
-import re
+import re, os
 import time
 from typing import Dict, Any, Tuple, Optional
 

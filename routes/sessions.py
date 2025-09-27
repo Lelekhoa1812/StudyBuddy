@@ -1,5 +1,5 @@
 # routes/sessions.py
-import json, time, uuid
+import json, time, uuid, os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import Form, HTTPException

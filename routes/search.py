@@ -1,5 +1,5 @@
 # routes/search.py
-import re, asyncio, time, json
+import re, asyncio, time, json, os
 from typing import List, Dict, Any, Tuple
 from helpers.setup import logger, embedder, gemini_rotator, nvidia_rotator
 from utils.api.router import select_model, generate_answer_with_model, qwen_chat_completion, nvidia_large_chat_completion

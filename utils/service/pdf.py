@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import List, Dict
 from fastapi import HTTPException
 from utils.logger import get_logger
+from helpers.setup import gemini_rotator, nvidia_rotator
 
 logger = get_logger("PDF", __name__)
 
@@ -691,7 +692,7 @@ Return only the formatted references, one per line, numbered sequentially."""
         user_prompt = f"Format these sources in IEEE style:\n\n{source_data}"
         
         selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id="system", context="pdf_citation")
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id="system", context="pdf_citation")
         
         # Parse the response into individual references
         references = [line.strip() for line in response.split('\n') if line.strip() and line.strip().startswith('[')]

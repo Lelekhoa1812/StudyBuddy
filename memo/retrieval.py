@@ -259,6 +259,21 @@ Should this question be enhanced with context?"""
                     metadata={"question": question[:100]}
                 )
             
+            # Track memo agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memo",
+                        action="enhance",
+                        context="enhancement_decision",
+                        metadata={"query": query}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better context enhancement reasoning
             from utils.api.router import qwen_chat_completion
             response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "enhancement_decision")
@@ -343,6 +358,21 @@ Create an enhanced version that incorporates this context naturally."""
                     metadata={"question": question[:100]}
                 )
             
+            # Track memo agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memo",
+                        action="enhance",
+                        context="question_enhancement",
+                        metadata={"query": question}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better question enhancement reasoning
             from utils.api.router import qwen_chat_completion
             enhanced_question = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "question_enhancement")
@@ -419,6 +449,21 @@ Create an enhanced version that incorporates this context naturally."""
                     context="instruction_enhancement",
                     metadata={"instructions": instructions[:100]}
                 )
+            
+            # Track memo agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memo",
+                        action="enhance",
+                        context="instruction_enhancement",
+                        metadata={"instructions": instructions}
+                    )
+            except Exception:
+                pass
             
             # Use Qwen for better instruction enhancement reasoning
             from utils.api.router import qwen_chat_completion

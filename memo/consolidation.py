@@ -217,6 +217,21 @@ Create a single consolidated memory:"""
                             metadata={"count": len(contents)}
                         )
                     
+                    # Track memo agent usage
+                    try:
+                        from utils.analytics import get_analytics_tracker
+                        tracker = get_analytics_tracker()
+                        if tracker:
+                            await tracker.track_agent_usage(
+                                user_id=user_id,
+                                agent_name="memo",
+                                action="consolidate",
+                                context="memory_consolidation",
+                                metadata={"memories_count": len(memories)}
+                            )
+                    except Exception:
+                        pass
+                    
                     # Use Qwen for better memory consolidation reasoning
                     from utils.api.router import qwen_chat_completion
                     consolidated_content = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "memory_consolidation")

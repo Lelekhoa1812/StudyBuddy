@@ -187,7 +187,9 @@ Please provide the corrected Mermaid code that will render successfully."""
 
         # Use NVIDIA_LARGE for better error correction
         selection = {"provider": "nvidia_large", "model": os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b")}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, None, user_id, "diagram_fix")
+        # Import rotators from setup
+        from helpers.setup import gemini_rotator, nvidia_rotator
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "diagram_fix")
         
         if response:
             # Clean up the response

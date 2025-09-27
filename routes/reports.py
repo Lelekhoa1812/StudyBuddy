@@ -1272,7 +1272,7 @@ Return the renumbered headings in the format: "level: new_number: heading_text" 
         
         # Use NVIDIA model for heading re-numbering
         selection = {"provider": "nvidia", "model": os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct")}
-        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, None, nvidia_rotator, user_id, "report_heading_fix")
+        response = await generate_answer_with_model(selection, sys_prompt, user_prompt, gemini_rotator, nvidia_rotator, user_id, "report_heading_fix")
         
         # Parse the AI response
         renumbered_headings = []

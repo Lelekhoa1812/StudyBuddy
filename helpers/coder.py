@@ -97,7 +97,7 @@ async def generate_code_artifacts(
             if tracker and user_id:
                 await tracker.track_model_usage(
                     user_id=user_id,
-                    model_name="nvidia_large",
+                    model_name=os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b"),
                     provider="nvidia_large",
                     context="code_analysis",
                     metadata={"subsection_id": subsection_id}
@@ -157,7 +157,7 @@ async def generate_code_artifacts(
         if tracker and user_id:
             await tracker.track_model_usage(
                 user_id=user_id,
-                model_name=NVIDIA_CODER,
+                model_name=os.getenv("NVIDIA_CODER", "qwen/qwen3-coder-480b-a35b-instruct"),
                 provider="nvidia_coder",
                 context="report_coding",
                 metadata={"subsection_id": subsection_id}
@@ -190,7 +190,7 @@ async def nvidia_coder_completion(system_prompt: str, user_prompt: str, nvidia_r
         if tracker and user_id:
             await tracker.track_model_usage(
                 user_id=user_id,
-                model_name="nvidia/coder-8b",
+                model_name=os.getenv("NVIDIA_CODER", "qwen/qwen3-coder-480b-a35b-instruct"),
                 provider="nvidia_coder",
                 context=context or "nvidia_coder_completion",
                 metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}

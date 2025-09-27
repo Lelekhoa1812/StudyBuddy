@@ -148,6 +148,21 @@ Respond with only the intent name (e.g., "ENHANCEMENT")."""
                     metadata={"question": question[:100]}
                 )
             
+            # Track memo agent usage
+            try:
+                from utils.analytics import get_analytics_tracker
+                tracker = get_analytics_tracker()
+                if tracker:
+                    await tracker.track_agent_usage(
+                        user_id=user_id,
+                        agent_name="memo",
+                        action="intent",
+                        context="intent_detection",
+                        metadata={"query": query}
+                    )
+            except Exception:
+                pass
+            
             # Use Qwen for better intent detection reasoning
             from utils.api.router import qwen_chat_completion
             response = await qwen_chat_completion(sys_prompt, user_prompt, nvidia_rotator, user_id, "intent_detection")

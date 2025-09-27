@@ -4,11 +4,12 @@ from typing import List
 from utils.logger import get_logger
 from utils.api.rotator import robust_post_json, APIKeyRotator
 from utils.api.router import qwen_chat_completion, nvidia_large_chat_completion
+from helpers.setup import nvidia_rotator
 
 logger = get_logger("SUM", __name__)
 
-# Create a module-level NVIDIA API key rotator (uses NVIDIA_API_1..N)
-ROTATOR = APIKeyRotator(prefix="NVIDIA_API_", max_slots=5)
+# Use the shared NVIDIA API key rotator from helpers.setup
+ROTATOR = nvidia_rotator
 
 
 async def llama_chat(messages, temperature: float = 0.2, user_id: str = "system", context: str = "llama_chat") -> str:
@@ -85,7 +86,7 @@ async def nvidia_large_summarize(text: str, max_sentences: int = 3) -> str:
         if tracker:
             await tracker.track_model_usage(
                 user_id="system",
-                model_name="openai/gpt-oss-120b",
+                model_name=os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b"),
                 provider="nvidia_large",
                 context="summarization",
                 metadata={"text_length": len(text)}
@@ -156,7 +157,7 @@ async def clean_chunk_text(text: str) -> str:
         if tracker:
             await tracker.track_model_usage(
                 user_id="system",
-                model_name="meta/llama-3.1-8b-instruct",
+                model_name=os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
                 provider="nvidia",
                 context="content_cleaning",
                 metadata={"text_length": len(text)}
@@ -187,7 +188,7 @@ async def qwen_summarize(text: str, max_sentences: int = 3) -> str:
         if tracker:
             await tracker.track_model_usage(
                 user_id="system",
-                model_name="meta/llama-3.1-8b-instruct",
+                model_name=os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
                 provider="nvidia",
                 context="qwen_summarization",
                 metadata={"text_length": len(text)}

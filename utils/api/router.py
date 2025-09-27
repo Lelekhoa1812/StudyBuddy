@@ -228,7 +228,7 @@ async def qwen_chat_completion(system_prompt: str, user_prompt: str, nvidia_rota
         if tracker and user_id:
             await tracker.track_model_usage(
                 user_id=user_id,
-                model_name="meta/llama-3.1-8b-instruct",
+                model_name=os.getenv("NVIDIA_MEDIUM", "qwen/qwen3-next-80b-a3b-thinking"),
                 provider="nvidia",
                 context=context or "qwen_completion",
                 metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
@@ -320,7 +320,7 @@ async def nvidia_large_chat_completion(system_prompt: str, user_prompt: str, nvi
         if tracker and user_id:
             await tracker.track_model_usage(
                 user_id=user_id,
-                model_name="openai/gpt-oss-120b",
+                model_name=os.getenv("NVIDIA_LARGE", "openai/gpt-oss-120b"),
                 provider="nvidia_large",
                 context=context or "nvidia_large_completion",
                 metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}

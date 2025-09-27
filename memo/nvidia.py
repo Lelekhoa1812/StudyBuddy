@@ -29,7 +29,7 @@ async def nvidia_chat(system_prompt: str, user_prompt: str, nvidia_key: str, rot
         if tracker:
             await tracker.track_model_usage(
                 user_id=user_id,
-                model_name=NVIDIA_SMALL,
+                model_name=os.getenv("NVIDIA_SMALL", "meta/llama-3.1-8b-instruct"),
                 provider="nvidia",
                 context=context,
                 metadata={"system_prompt_length": len(system_prompt), "user_prompt_length": len(user_prompt)}
@@ -59,6 +59,21 @@ async def qwen_chat(system_prompt: str, user_prompt: str, rotator, user_id: str 
     """
     Qwen chat call for medium complexity tasks with thinking mode.
     """
+    # Track memo agent usage
+    try:
+        from utils.analytics import get_analytics_tracker
+        tracker = get_analytics_tracker()
+        if tracker:
+            await tracker.track_agent_usage(
+                user_id=user_id,
+                agent_name="memo",
+                action="chat",
+                context="memo_qwen_chat",
+                metadata={"query": user_prompt[:100]}
+            )
+    except Exception:
+        pass
+    
     try:
         return await qwen_chat_completion(system_prompt, user_prompt, rotator, user_id, "memo_qwen_chat")
     except Exception as e:

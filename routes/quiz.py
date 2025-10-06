@@ -118,7 +118,7 @@ async def submit_quiz(
 
 
 async def parse_question_input(questions_input: str, nvidia_rotator) -> Dict[str, int]:
-    """Parse user input to determine MCQ and self-reflect question counts"""
+    """Parse user input to determine MCQ and self-reflect question counts using Llama model"""
     system_prompt = """You are an expert at parsing user requests for quiz questions. 
     Given a user's input about how many questions they want, extract the number of MCQ and self-reflect questions.
     
@@ -128,8 +128,12 @@ async def parse_question_input(questions_input: str, nvidia_rotator) -> Dict[str
         "sr": <number of self-reflect questions>
     }
     
-    If the user doesn't specify types, assume they want MCQ questions.
-    If they say "total" or "questions", split them roughly 70% MCQ and 30% self-reflect.
+    Rules:
+    - If user specifies "MCQ" or "multiple choice", count those as mcq
+    - If user specifies "self-reflect", "self-reflection", "reflection", or "open-ended", count those as sr
+    - If user says "total" or just gives a number, split 70% MCQ and 30% self-reflect
+    - If user doesn't specify types, assume they want MCQ questions
+    - Always return valid numbers (0 or positive integers)
     """
     
     user_prompt = f"User input: {questions_input}\n\nExtract the question counts:"
@@ -160,7 +164,7 @@ async def parse_question_input(questions_input: str, nvidia_rotator) -> Dict[str
 
 
 async def get_document_summaries(user_id: str, project_id: str, documents: List[str]) -> str:
-    """Get summaries from selected documents"""
+    """Get comprehensive summaries from selected documents using NVIDIA models"""
     summaries = []
     
     for doc in documents:
@@ -171,20 +175,57 @@ async def get_document_summaries(user_id: str, project_id: str, documents: List[
                 summaries.append(f"[{doc}] {file_data['summary']}")
             
             # Get additional chunks for more context
-            chunks = rag.get_file_chunks(user_id=user_id, project_id=project_id, filename=doc, limit=20)
+            chunks = rag.get_file_chunks(user_id=user_id, project_id=project_id, filename=doc, limit=30)
             if chunks:
-                chunk_text = "\n".join([chunk.get("content", "") for chunk in chunks[:10]])
-                summaries.append(f"[{doc} - Additional Content] {chunk_text[:2000]}...")
+                chunk_text = "\n".join([chunk.get("content", "") for chunk in chunks[:15]])
+                summaries.append(f"[{doc} - Additional Content] {chunk_text[:3000]}...")
                 
         except Exception as e:
             logger.warning(f"[QUIZ] Failed to get summary for {doc}: {e}")
             continue
     
-    return "\n\n".join(summaries)
+    # Use NVIDIA_LARGE for comprehensive analysis if content is long
+    combined_summaries = "\n\n".join(summaries)
+    if len(combined_summaries) > 5000:
+        logger.info(f"[QUIZ] Using NVIDIA_LARGE for long context analysis ({len(combined_summaries)} chars)")
+        return await enhance_document_analysis(combined_summaries, nvidia_rotator)
+    
+    return combined_summaries
+
+
+async def enhance_document_analysis(document_content: str, nvidia_rotator) -> str:
+    """Use NVIDIA_LARGE to enhance document analysis for long contexts"""
+    system_prompt = """You are an expert at analyzing educational documents and extracting key information for quiz generation.
+    Given document content, create a comprehensive summary that focuses on:
+    - Main concepts and theories
+    - Important facts and details
+    - Key processes and procedures
+    - Critical thinking points
+    - Relationships between concepts
+    
+    Provide a structured summary that will be useful for generating high-quality quiz questions.
+    """
+    
+    user_prompt = f"Document content:\n{document_content[:8000]}...\n\nCreate a comprehensive analysis:"
+    
+    try:
+        response = await generate_answer_with_model(
+            selection={"provider": "nvidia_large", "model": NVIDIA_LARGE},
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            gemini_rotator=gemini_rotator,
+            nvidia_rotator=nvidia_rotator,
+            user_id="system",
+            context="quiz_document_analysis"
+        )
+        return response
+    except Exception as e:
+        logger.warning(f"[QUIZ] Failed to enhance document analysis: {e}")
+        return document_content
 
 
 async def extract_key_topics(document_summaries: str, nvidia_rotator) -> List[str]:
-    """Extract key topics from document summaries"""
+    """Extract key topics from document summaries using NVIDIA_SMALL for efficiency"""
     system_prompt = """You are an expert at analyzing educational content and extracting key topics.
     Given document summaries, identify the main topics and concepts that would be suitable for quiz questions.
     
@@ -194,15 +235,15 @@ async def extract_key_topics(document_summaries: str, nvidia_rotator) -> List[st
     - Key processes and procedures
     - Critical thinking points
     
-    Limit to 10-15 most important topics.
+    Limit to 10-15 most important topics. Be specific and concise.
     """
     
-    user_prompt = f"Document summaries:\n{document_summaries}\n\nExtract key topics:"
+    user_prompt = f"Document summaries:\n{document_summaries[:4000]}...\n\nExtract key topics:"
     
     try:
-        # Use NVIDIA_MEDIUM for topic extraction
+        # Use NVIDIA_SMALL for topic extraction (efficient for this task)
         response = await generate_answer_with_model(
-            selection={"provider": "qwen", "model": NVIDIA_MEDIUM},
+            selection={"provider": "nvidia", "model": NVIDIA_SMALL},
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             gemini_rotator=gemini_rotator,
@@ -220,27 +261,33 @@ async def extract_key_topics(document_summaries: str, nvidia_rotator) -> List[st
 
 
 async def create_question_plan(question_config: Dict, key_topics: List[str], nvidia_rotator) -> List[Dict]:
-    """Create a plan for question generation"""
+    """Create a plan for question generation using NVIDIA_MEDIUM (Qwen) for reasoning"""
     system_prompt = """You are an expert at creating quiz question generation plans.
     Given question counts and topics, create a detailed plan for generating questions.
     
     Return a JSON array of task objects, each with:
     - description: what type of questions to generate
-    - complexity: "high", "medium", or "low"
+    - complexity: "high", "medium", or "low" (corresponds to model selection)
     - topic: which topic to focus on
     - number_mcq: number of MCQ questions for this task
     - number_sr: number of self-reflect questions for this task
     
-    Distribute questions across topics and complexity levels.
+    Rules:
+    - Distribute questions across topics and complexity levels
+    - High complexity = use NVIDIA_LARGE (GPT-OSS)
+    - Medium complexity = use NVIDIA_MEDIUM (Qwen)
+    - Low complexity = use NVIDIA_SMALL (Llama)
+    - Balance MCQ and self-reflect questions appropriately
+    - Focus on different aspects of each topic
     """
     
     user_prompt = f"""Question config: {question_config}
     Key topics: {key_topics}
     
-    Create a generation plan:"""
+    Create a detailed generation plan:"""
     
     try:
-        # Use NVIDIA_MEDIUM for planning
+        # Use NVIDIA_MEDIUM (Qwen) for planning and reasoning
         response = await generate_answer_with_model(
             selection={"provider": "qwen", "model": NVIDIA_MEDIUM},
             system_prompt=system_prompt,
@@ -267,24 +314,56 @@ async def create_question_plan(question_config: Dict, key_topics: List[str], nvi
 
 
 async def generate_questions_and_answers(plan: List[Dict], document_summaries: str, nvidia_rotator) -> List[Dict]:
-    """Generate questions and answers based on the plan"""
+    """Generate questions and answers based on the plan using async optimization"""
     all_questions = []
     
-    for task in plan:
-        try:
-            # Generate questions for this task
-            questions = await generate_task_questions(task, document_summaries, nvidia_rotator)
-            all_questions.extend(questions)
-            
-        except Exception as e:
-            logger.warning(f"[QUIZ] Failed to generate questions for task: {e}")
-            continue
+    # Group tasks by complexity for efficient model usage
+    high_complexity_tasks = [task for task in plan if task.get("complexity") == "high"]
+    medium_complexity_tasks = [task for task in plan if task.get("complexity") == "medium"]
+    low_complexity_tasks = [task for task in plan if task.get("complexity") == "low"]
+    
+    # Generate questions concurrently for each complexity level
+    tasks = []
+    
+    # High complexity tasks (use NVIDIA_LARGE)
+    for task in high_complexity_tasks:
+        tasks.append(generate_task_questions(task, document_summaries, nvidia_rotator, "high"))
+    
+    # Medium complexity tasks (use NVIDIA_MEDIUM)
+    for task in medium_complexity_tasks:
+        tasks.append(generate_task_questions(task, document_summaries, nvidia_rotator, "medium"))
+    
+    # Low complexity tasks (use NVIDIA_SMALL)
+    for task in low_complexity_tasks:
+        tasks.append(generate_task_questions(task, document_summaries, nvidia_rotator, "low"))
+    
+    # Execute all tasks concurrently
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning(f"[QUIZ] Task generation failed: {result}")
+                continue
+            if isinstance(result, list):
+                all_questions.extend(result)
+                
+    except Exception as e:
+        logger.error(f"[QUIZ] Concurrent question generation failed: {e}")
+        # Fallback to sequential generation
+        for task in plan:
+            try:
+                questions = await generate_task_questions(task, document_summaries, nvidia_rotator)
+                all_questions.extend(questions)
+            except Exception as task_error:
+                logger.warning(f"[QUIZ] Failed to generate questions for task: {task_error}")
+                continue
     
     return all_questions
 
 
-async def generate_task_questions(task: Dict, document_summaries: str, nvidia_rotator) -> List[Dict]:
-    """Generate questions for a specific task"""
+async def generate_task_questions(task: Dict, document_summaries: str, nvidia_rotator, complexity: str = None) -> List[Dict]:
+    """Generate questions for a specific task using appropriate model based on complexity"""
     system_prompt = f"""You are an expert quiz question generator.
     Generate {task.get('number_mcq', 0)} multiple choice questions and {task.get('number_sr', 0)} self-reflection questions.
     
@@ -293,11 +372,13 @@ async def generate_task_questions(task: Dict, document_summaries: str, nvidia_ro
     - Provide 4 answer options (A, B, C, D)
     - Mark the correct answer
     - Make distractors plausible but incorrect
+    - Focus on the specific topic: {task.get('topic', 'General')}
     
     For self-reflection questions:
     - Create open-ended questions that require critical thinking
     - Focus on analysis, evaluation, and synthesis
     - Encourage personal reflection and application
+    - Relate to the specific topic: {task.get('topic', 'General')}
     
     Return a JSON array of question objects with this format:
     {{
@@ -311,14 +392,16 @@ async def generate_task_questions(task: Dict, document_summaries: str, nvidia_ro
     """
     
     user_prompt = f"""Task: {task}
-    Document content: {document_summaries[:3000]}...
+    Document content: {document_summaries[:4000]}...
     
     Generate questions:"""
     
     try:
         # Use appropriate model based on complexity
-        if task.get("complexity") == "high":
+        if complexity == "high" or task.get("complexity") == "high":
             model_selection = {"provider": "nvidia_large", "model": NVIDIA_LARGE}
+        elif complexity == "medium" or task.get("complexity") == "medium":
+            model_selection = {"provider": "qwen", "model": NVIDIA_MEDIUM}
         else:
             model_selection = {"provider": "nvidia", "model": NVIDIA_SMALL}
         
@@ -400,16 +483,24 @@ async def mark_single_question(question: Dict, user_answer: Any, nvidia_rotator)
 
 
 async def generate_mcq_explanation(question: Dict, user_answer: Any, nvidia_rotator) -> str:
-    """Generate explanation for MCQ answer"""
+    """Generate explanation for MCQ answer using Llama model"""
     system_prompt = """You are an expert tutor. Explain why the user's answer was wrong and why the correct answer is right.
-    Be concise but helpful. Focus on the key concept being tested."""
+    Be concise but helpful. Focus on the key concept being tested.
+    
+    Provide:
+    1. Why the user's answer was incorrect
+    2. Why the correct answer is right
+    3. Key concept or principle being tested
+    4. Brief learning tip
+    
+    Keep it educational and encouraging."""
     
     user_prompt = f"""Question: {question['question']}
     Options: {question.get('options', [])}
     User's answer: {user_answer}
     Correct answer: {question.get('correct_answer', 0)}
     
-    Explain why the user was wrong:"""
+    Explain why the user was wrong and provide learning guidance:"""
     
     try:
         response = await generate_answer_with_model(
@@ -428,9 +519,14 @@ async def generate_mcq_explanation(question: Dict, user_answer: Any, nvidia_rota
 
 
 async def evaluate_self_reflect_answer(question: Dict, user_answer: str, nvidia_rotator) -> str:
-    """Evaluate self-reflection answer using AI"""
+    """Evaluate self-reflection answer using Llama model"""
     system_prompt = """You are an expert educator evaluating student responses.
     Evaluate the student's answer and determine if it's correct, partially correct, or incorrect.
+    
+    Criteria:
+    - "correct": Answer demonstrates clear understanding, addresses the question fully, shows critical thinking
+    - "partial": Answer shows some understanding but incomplete, partially addresses the question
+    - "incorrect": Answer shows misunderstanding, doesn't address the question, or is too brief
     
     Return only one word: "correct", "partial", or "incorrect"
     """
@@ -463,16 +559,23 @@ async def evaluate_self_reflect_answer(question: Dict, user_answer: str, nvidia_
 
 
 async def generate_self_reflect_feedback(question: Dict, user_answer: str, status: str, nvidia_rotator) -> str:
-    """Generate feedback for self-reflection answer"""
+    """Generate feedback for self-reflection answer using Llama model"""
     system_prompt = """You are an expert tutor providing feedback on student responses.
     Provide constructive feedback that helps the student understand their answer and improve.
-    Be encouraging but honest about areas for improvement."""
+    Be encouraging but honest about areas for improvement.
+    
+    For each status:
+    - "correct": Acknowledge strengths and encourage continued learning
+    - "partial": Point out what's good, suggest improvements, encourage deeper thinking
+    - "incorrect": Gently guide toward correct understanding, provide hints, encourage retry
+    
+    Keep feedback concise but helpful."""
     
     user_prompt = f"""Question: {question['question']}
     Student's answer: {user_answer or 'No answer provided'}
     Evaluation: {status}
     
-    Provide feedback:"""
+    Provide constructive feedback:"""
     
     try:
         response = await generate_answer_with_model(

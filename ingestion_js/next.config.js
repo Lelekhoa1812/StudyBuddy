@@ -2,7 +2,7 @@
 const nextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: '50mb' },
-    serverComponentsExternalPackages: ['pdfjs-dist']
+    serverComponentsExternalPackages: ['pdf-parse']
   },
   webpack: (config) => {
     config.resolve = config.resolve || {}

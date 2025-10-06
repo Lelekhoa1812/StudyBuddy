@@ -59,28 +59,51 @@ export async function POST(req: NextRequest) {
 }
 
 async function processAll(job_id: string, user_id: string, project_id: string, files: Array<{ name: string; buf: Buffer }>, replaceSet: Set<string>) {
+  console.log(`[UPLOAD_DEBUG] Starting processing for job ${job_id} with ${files.length} files`)
+  
   for (let i = 0; i < files.length; i++) {
     const { name: fname, buf } = files[i]
+    console.log(`[UPLOAD_DEBUG] Processing file ${i + 1}/${files.length}: ${fname} (${buf.length} bytes)`)
+    
     try {
       if (replaceSet.has(fname)) {
+        console.log(`[UPLOAD_DEBUG] Replacing existing data for ${fname}`)
         await deleteFileData(user_id, project_id, fname)
       }
 
+      console.log(`[UPLOAD_DEBUG] Extracting pages from ${fname}`)
       const pages = await extractPages(fname, buf)
+      console.log(`[UPLOAD_DEBUG] Extracted ${pages.length} pages`)
 
+      console.log(`[UPLOAD_DEBUG] Building cards from pages`)
       const cards = await buildCardsFromPages(pages, fname, user_id, project_id)
+      console.log(`[UPLOAD_DEBUG] Built ${cards.length} cards`)
+
+      console.log(`[UPLOAD_DEBUG] Generating embeddings for ${cards.length} cards`)
       const vectors = await embedRemote(cards.map(c => c.content))
+      console.log(`[UPLOAD_DEBUG] Generated ${vectors.length} embeddings`)
+      
       for (let k = 0; k < cards.length; k++) (cards[k] as any).embedding = vectors[k]
 
+      console.log(`[UPLOAD_DEBUG] Storing cards in MongoDB`)
       await storeCards(cards)
 
+      console.log(`[UPLOAD_DEBUG] Creating file summary`)
       const fullText = pages.map(p => p.text || '').join('\n\n')
       const summary = await cheapSummarize(fullText, 6)
       await upsertFileSummary(user_id, project_id, fname, summary)
 
+      console.log(`[UPLOAD_DEBUG] Updating job progress: ${i + 1}/${files.length}`)
       await updateJob(job_id, { completed: i + 1, status: (i + 1) < files.length ? 'processing' as const : 'completed' as const })
+      
+      console.log(`[UPLOAD_DEBUG] Successfully processed ${fname}`)
     } catch (e: any) {
-      await updateJob(job_id, { completed: i + 1, last_error: String(e) })
+      console.error(`[UPLOAD_DEBUG] Error processing ${fname}:`, e)
+      console.error(`[UPLOAD_DEBUG] Error stack:`, e.stack)
+      await updateJob(job_id, { completed: i + 1, status: 'failed' as const, last_error: String(e) })
+      break // Stop processing on first error
     }
   }
+  
+  console.log(`[UPLOAD_DEBUG] Finished processing job ${job_id}`)
 }

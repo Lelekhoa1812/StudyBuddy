@@ -2,6 +2,10 @@
   "name": "ingestion-js",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": ">=18.17 <21"
+  },
+  "packageManager": "npm@10",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   
   try {
     const { db } = await getMongo()
-    const job = await db.collection('jobs').findOne({ _id: job_id })
+    // Use any type to bypass TypeScript strict typing for _id field
+    const job = await db.collection('jobs').findOne({ _id: job_id } as any)
     
     if (!job) {
       return NextResponse.json({ error: 'Job not found', job_id }, { status: 404 })

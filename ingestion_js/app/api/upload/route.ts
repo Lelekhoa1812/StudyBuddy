@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
   const job_id = randomUUID()
   await createJob(job_id, preloaded.length)
 
+  // Start background processing
   processAll(job_id, user_id, project_id, preloaded, replaceSet).catch(async (e) => {
+    console.error(`[UPLOAD_DEBUG] Background processing failed for job ${job_id}:`, e)
     await updateJob(job_id, { status: 'failed', last_error: String(e) })
   })
 

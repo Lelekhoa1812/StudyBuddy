@@ -1,0 +1,51 @@
+# Ignore unnecessary files for Docker build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+.gitignore
+.dockerignore
+
+# Ignore documentation files (keep only main README)
+*.md
+!README.md
+ingestion_pipeline
+exefiles
+diagram
+diagram.svg
+LICENSE.txt
+report.pdf
+
+# Ignore test files
+test_*.py
+*_test.py
+tests/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore unnecessary directories
+# config/ and services/ are needed for the application

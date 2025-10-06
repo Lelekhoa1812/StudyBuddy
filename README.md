@@ -95,6 +95,40 @@ Open: `http://localhost:8000/static/`  •  Health: `GET /healthz`
 
 [Agent Assignment](https://huggingface.co/spaces/BinKhoaLe1812/EdSummariser/blob/main/AGENT_ASNM.md)
 
+### Manage ingestion_python as a git subtree (brief)
+
+Remotes (set once):
+
+```bash
+git remote add hfi1 https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion1
+git remote add hfi2 https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion2
+git remote add hfi3 https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion3
+```
+
+Push ingestion_python to a Space:
+
+```bash
+# push current ingestion_python contents to hfi1 main
+git subtree push --prefix=ingestion_python hfi1 main
+
+# (alternatives)
+git subtree push --prefix=ingestion_python hfi2 main
+git subtree push --prefix=ingestion_python hfi3 main
+```
+
+Pull updates from a Space into the folder:
+
+```bash
+git fetch hfi1
+git subtree pull --prefix=ingestion_python hfi1 main --squash
+```
+
+Links:
+
+- [StuddyBuddy_Ingestion1](https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion1)
+- [StuddyBuddy_Ingestion2](https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion2)
+- [StuddyBuddy_Ingestion3](https://huggingface.co/spaces/BinKhoaLe1812/StuddyBuddy_Ingestion3)
+
 ### License
 
 Apache-2.0

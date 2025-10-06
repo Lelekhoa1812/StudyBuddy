@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getMongo } from '@/lib/mongo'
+import { getMongo, ensureIndexes } from '@/lib/mongo'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +8,7 @@ export async function GET() {
   let mongodb_connected = false
   try {
     await mongo.db.command({ ping: 1 })
+    await ensureIndexes()
     mongodb_connected = true
   } catch {
     mongodb_connected = false

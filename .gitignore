@@ -2,6 +2,7 @@
 diagram
 
 # For ingestion pipeline
-ingestion_pipeline
+ingestion_python/.git
+ingestion_js/.git
 embedder 
 exefiles

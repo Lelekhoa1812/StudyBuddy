@@ -35,19 +35,29 @@ function createOverlappingChunks(blocks: string[]): string[] {
 }
 
 export async function buildCardsFromPages(pages: Page[], filename: string, user_id: string, project_id: string) {
+  console.log(`[CHUNKER_DEBUG] Building cards from ${pages.length} pages for ${filename}`)
+  
   let full = ''
   for (const p of pages) full += `\n\n[[Page ${p.page_num}]]\n${(p.text || '').trim()}\n`
+  console.log(`[CHUNKER_DEBUG] Full text length: ${full.length}`)
+  
   const coarse = byHeadings(full)
+  console.log(`[CHUNKER_DEBUG] Split into ${coarse.length} heading blocks`)
+  
   const chunks = createOverlappingChunks(coarse)
+  console.log(`[CHUNKER_DEBUG] Created ${chunks.length} overlapping chunks`)
 
   const out: any[] = []
   for (let i = 0; i < chunks.length; i++) {
+    console.log(`[CHUNKER_DEBUG] Processing chunk ${i + 1}/${chunks.length}`)
+    
     const cleaned = await cleanChunkText(chunks[i])
     const topic = (await cheapSummarize(cleaned, 1)) || (cleaned.slice(0, 80) + '...')
     const summary = await cheapSummarize(cleaned, 3)
     const firstPage = pages[0]?.page_num ?? 1
     const lastPage = pages[pages.length - 1]?.page_num ?? 1
-    out.push({
+    
+    const card = {
       user_id,
       project_id,
       filename,
@@ -55,8 +65,13 @@ export async function buildCardsFromPages(pages: Page[], filename: string, user_
       summary,
       content: cleaned,
       page_span: [firstPage, lastPage],
-      card_id: `${slugify(filename)}-c${String(i + 1).padStart(4, '0')}`
-    })
+      card_id: `${slugify(String(filename))}-c${String(i + 1).padStart(4, '0')}`
+    }
+    
+    console.log(`[CHUNKER_DEBUG] Created card ${card.card_id} with content length ${cleaned.length}`)
+    out.push(card)
   }
+  
+  console.log(`[CHUNKER_DEBUG] Built ${out.length} cards total`)
   return out
 }

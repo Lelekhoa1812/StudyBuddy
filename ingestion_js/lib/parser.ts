@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
 
@@ -7,17 +8,40 @@ export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   console.log(`[PARSER_DEBUG] Parsing PDF with ${buf.length} bytes`)
   
   try {
+    // First try pdf-parse for text extraction
     const data = await pdfParse(buf)
     const text = data.text || ''
     console.log(`[PARSER_DEBUG] PDF extracted ${text.length} characters`)
     
-    // Split text by pages if possible (pdf-parse doesn't provide page breaks)
-    // For now, treat as single page like DOCX
-    const pages: Page[] = [{
-      page_num: 1,
-      text: text || `[PDF Content - ${buf.length} bytes - No text extracted]`,
-      images: [] // Images not extracted in current implementation
-    }]
+    // Get page count from pdf-lib for proper page structure
+    const pdfDoc = await PDFDocument.load(buf)
+    const pageCount = pdfDoc.getPageCount()
+    console.log(`[PARSER_DEBUG] PDF has ${pageCount} pages`)
+    
+    const pages: Page[] = []
+    
+    if (pageCount === 1) {
+      // Single page - use all text
+      pages.push({
+        page_num: 1,
+        text: text || `[PDF Content - ${buf.length} bytes - No text extracted]`,
+        images: []
+      })
+    } else {
+      // Multiple pages - split text roughly by page count
+      const textPerPage = Math.ceil(text.length / pageCount)
+      for (let i = 0; i < pageCount; i++) {
+        const start = i * textPerPage
+        const end = Math.min(start + textPerPage, text.length)
+        const pageText = text.slice(start, end).trim()
+        
+        pages.push({
+          page_num: i + 1,
+          text: pageText || `[PDF Page ${i + 1} - No text extracted]`,
+          images: []
+        })
+      }
+    }
     
     console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages`)
     return pages

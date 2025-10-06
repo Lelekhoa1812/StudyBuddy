@@ -1,2 +1,6 @@
 .env
 diagram
+
+# For ingestion pipeline
+ingestion_pipeline
+exefiles

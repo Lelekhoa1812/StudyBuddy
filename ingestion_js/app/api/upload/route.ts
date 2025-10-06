@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { extractPages } from '@/lib/parser'
-import { captionImage } from '@/lib/captioner'
 import { buildCardsFromPages } from '@/lib/chunker'
 import { embedRemote } from '@/lib/embedder'
 import { deleteFileData, storeCards, upsertFileSummary } from '@/lib/mongo'
@@ -12,6 +11,14 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
+  // Ensure envs
+  if (!process.env.MONGO_URI) {
+    return NextResponse.json({ error: 'Server not configured: MONGO_URI missing' }, { status: 500 })
+  }
+  if (!process.env.EMBED_BASE_URL) {
+    return NextResponse.json({ error: 'Server not configured: EMBED_BASE_URL missing' }, { status: 500 })
+  }
+
   const form = await req.formData()
   const user_id = String(form.get('user_id') || '')
   const project_id = String(form.get('project_id') || '')
@@ -44,7 +51,6 @@ export async function POST(req: NextRequest) {
   const job_id = randomUUID()
   await createJob(job_id, preloaded.length)
 
-  // Fire-and-forget background processing; response immediately
   processAll(job_id, user_id, project_id, preloaded, replaceSet).catch(async (e) => {
     await updateJob(job_id, { status: 'failed', last_error: String(e) })
   })
@@ -61,9 +67,6 @@ async function processAll(job_id: string, user_id: string, project_id: string, f
       }
 
       const pages = await extractPages(fname, buf)
-
-      // Best-effort captioning: parser doesn’t expose images; keep behavior parity by skipping or integrating if images available.
-      // If images were available, we would append [Image] caption lines to page text here.
 
       const cards = await buildCardsFromPages(pages, fname, user_id, project_id)
       const vectors = await embedRemote(cards.map(c => c.content))

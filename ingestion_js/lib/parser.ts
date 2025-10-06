@@ -5,8 +5,13 @@ export type Page = { page_num: number; text: string; images: Buffer[] }
 
 export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   return new Promise((resolve, reject) => {
-    pdfTextExtract(buf, (err, pages) => {
+    // Convert Buffer to string for pdf-text-extract
+    const bufferString = buf.toString('binary')
+    const buffer = Buffer.from(bufferString, 'binary')
+    
+    pdfTextExtract(buffer, (err, pages) => {
       if (err) {
+        console.error('[PARSER_DEBUG] PDF extraction error:', err)
         reject(err)
         return
       }
@@ -15,6 +20,7 @@ export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
         out.push({ page_num: i + 1, text: pages[i] || '', images: [] })
       }
       if (out.length === 0) out.push({ page_num: 1, text: '', images: [] })
+      console.log(`[PARSER_DEBUG] Extracted ${out.length} pages from PDF`)
       resolve(out)
     })
   })

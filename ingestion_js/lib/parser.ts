@@ -1,9 +1,9 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf'
 import mammoth from 'mammoth'
 
-export type Page = { page_num: number; text: string; images: Buffer[] }
+export type Page = { page_num: number; text: string; images: Uint8Array[] }
 
-export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
+export async function parsePdfBytes(buf: Uint8Array): Promise<Page[]> {
   const loadingTask = pdfjs.getDocument({ data: buf })
   const pdf = await loadingTask.promise
   const out: Page[] = []
@@ -17,8 +17,8 @@ export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   return out
 }
 
-export async function parseDocxBytes(buf: Buffer): Promise<Page[]> {
-  const { value } = await mammoth.extractRawText({ buffer: buf })
+export async function parseDocxBytes(buf: Uint8Array): Promise<Page[]> {
+  const { value } = await mammoth.extractRawText({ buffer: Buffer.from(buf) })
   const text = value || ''
   return [{ page_num: 1, text, images: [] }]
 }
@@ -31,7 +31,7 @@ export function inferMime(filename: string): string {
   return 'application/octet-stream'
 }
 
-export async function extractPages(filename: string, file: Buffer): Promise<Page[]> {
+export async function extractPages(filename: string, file: Uint8Array): Promise<Page[]> {
   const mime = inferMime(filename)
   if (mime === 'application/pdf') return parsePdfBytes(file)
   if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return parseDocxBytes(file)

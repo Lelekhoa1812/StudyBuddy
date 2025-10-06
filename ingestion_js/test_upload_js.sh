@@ -100,6 +100,8 @@ PY
   < "$UPLOAD_BODY")
 fi
 
+echo "Extracted JOB_ID: '$JOB_ID'"
+
 if [ -z "${JOB_ID:-}" ]; then
   echo "❌ Failed to extract job_id from upload response"; exit 1
 fi

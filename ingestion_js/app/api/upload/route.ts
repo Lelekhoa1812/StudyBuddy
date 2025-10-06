@@ -39,9 +39,9 @@ export async function POST(req: NextRequest) {
   let renameMap: Record<string, string> = {}
   try { if (renameRaw) renameMap = JSON.parse(renameRaw) } catch {}
 
-  const preloaded: Array<{ name: string; buf: Buffer }> = []
+  const preloaded: Array<{ name: string; buf: Uint8Array }> = []
   for (const f of fileEntries) {
-    const arr = Buffer.from(await f.arrayBuffer())
+    const arr = new Uint8Array(await f.arrayBuffer())
     const sizeMb = arr.byteLength / (1024 * 1024)
     if (sizeMb > maxMb) return NextResponse.json({ error: `${f.name} exceeds ${maxMb} MB limit` }, { status: 400 })
     const eff = renameMap[f.name] || f.name
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ job_id, status: 'processing', total_files: preloaded.length })
 }
 
-async function processAll(job_id: string, user_id: string, project_id: string, files: Array<{ name: string; buf: Buffer }>, replaceSet: Set<string>) {
+async function processAll(job_id: string, user_id: string, project_id: string, files: Array<{ name: string; buf: Uint8Array }>, replaceSet: Set<string>) {
   for (let i = 0; i < files.length; i++) {
     const { name: fname, buf } = files[i]
     try {

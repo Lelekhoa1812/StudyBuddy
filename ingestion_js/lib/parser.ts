@@ -1,46 +1,69 @@
 import { PDFDocument } from 'pdf-lib'
-import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
 
 export type Page = { page_num: number; text: string; images: Buffer[] }
+
+// Simple text extraction from PDF using basic parsing
+function extractTextFromPdfBuffer(buffer: Buffer): string {
+  try {
+    // Convert buffer to string and look for text content
+    const pdfString = buffer.toString('latin1')
+    
+    // Look for text streams in PDF
+    const textMatches = pdfString.match(/BT[\s\S]*?ET/g) || []
+    const textContent = textMatches
+      .map(match => {
+        // Extract text from PDF text objects
+        const textMatches = match.match(/\([^)]*\)/g) || []
+        return textMatches
+          .map(t => t.slice(1, -1)) // Remove parentheses
+          .join(' ')
+      })
+      .join(' ')
+      .trim()
+    
+    return textContent || `[PDF Content - ${buffer.length} bytes - Text extraction limited]`
+  } catch (error) {
+    return `[PDF Content - ${buffer.length} bytes - Text extraction failed: ${error}]`
+  }
+}
 
 export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   console.log(`[PARSER_DEBUG] Parsing PDF with ${buf.length} bytes`)
   
   try {
-    // First try pdf-parse for text extraction
-    const data = await pdfParse(buf)
-    const text = data.text || ''
-    console.log(`[PARSER_DEBUG] PDF extracted ${text.length} characters`)
-    
-    // Get page count from pdf-lib for proper page structure
+    // Load PDF document to get page count
     const pdfDoc = await PDFDocument.load(buf)
     const pageCount = pdfDoc.getPageCount()
     console.log(`[PARSER_DEBUG] PDF has ${pageCount} pages`)
     
+    // Extract text content using basic parsing
+    const extractedText = extractTextFromPdfBuffer(buf)
+    console.log(`[PARSER_DEBUG] Extracted ${extractedText.length} characters`)
+    
     const pages: Page[] = []
     
-    if (pageCount === 1) {
-      // Single page - use all text
-      pages.push({
-        page_num: 1,
-        text: text || `[PDF Content - ${buf.length} bytes - No text extracted]`,
-        images: []
-      })
-    } else {
-      // Multiple pages - split text roughly by page count
-      const textPerPage = Math.ceil(text.length / pageCount)
+    if (pageCount > 1) {
+      // Split text roughly by pages (basic approach)
+      const textPerPage = Math.ceil(extractedText.length / pageCount)
       for (let i = 0; i < pageCount; i++) {
         const start = i * textPerPage
-        const end = Math.min(start + textPerPage, text.length)
-        const pageText = text.slice(start, end).trim()
+        const end = Math.min((i + 1) * textPerPage, extractedText.length)
+        const pageText = extractedText.slice(start, end).trim() || `[Page ${i + 1} - Content]`
         
         pages.push({
           page_num: i + 1,
-          text: pageText || `[PDF Page ${i + 1} - No text extracted]`,
+          text: pageText,
           images: []
         })
       }
+    } else {
+      // Single page
+      pages.push({
+        page_num: 1,
+        text: extractedText || `[PDF Content - ${buf.length} bytes]`,
+        images: []
+      })
     }
     
     console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages`)

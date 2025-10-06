@@ -3,13 +3,13 @@ import { randomUUID } from 'crypto'
 import { extractPages } from '@/lib/parser'
 import { buildCardsFromPages } from '@/lib/chunker'
 import { embedRemote } from '@/lib/embedder'
-import { captionImage, normalizeCaption } from '@/lib/captioner'
 import { deleteFileData, storeCards, upsertFileSummary } from '@/lib/mongo'
 import { cheapSummarize } from '@/lib/summarizer'
 import { createJob, updateJob } from '@/lib/jobs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 300 // 5 minutes for Vercel Pro plan
 
 export async function POST(req: NextRequest) {
   // Ensure envs
@@ -84,22 +84,8 @@ async function processAll(job_id: string, user_id: string, project_id: string, f
 
       // Process images with captions (best effort - images not extracted in current parser)
       // This matches Python behavior where captions are appended to page text
-      for (const page of pages) {
-        if (page.images && page.images.length > 0) {
-          const captions: string[] = []
-          for (const img of page.images) {
-            try {
-              const caption = await captionImage(img)
-              if (caption) captions.push(normalizeCaption(caption))
-            } catch (e) {
-              console.warn(`[${job_id}] Caption error in ${fname}: ${e}`)
-            }
-          }
-          if (captions.length > 0) {
-            page.text = (page.text + '\n\n' + captions.map(c => `[Image] ${c}`).join('\n')).trim()
-          }
-        }
-      }
+      // Note: Current parser doesn't extract images, so captioning is skipped
+      // This maintains API compatibility while avoiding complex image processing
 
       console.log(`[UPLOAD_DEBUG] Building cards from pages`)
       const cards = await buildCardsFromPages(pages, fname, user_id, project_id)

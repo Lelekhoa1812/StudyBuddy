@@ -30,6 +30,8 @@ class ChatHistoryResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+    quiz: Optional[Dict[str, Any]] = None
+    results: Optional[Dict[str, Any]] = None
 
 class UploadResponse(BaseModel):
     job_id: str
@@ -59,5 +61,30 @@ class StatusUpdateResponse(BaseModel):
     status: str
     message: str
     progress: Optional[int] = None
+
+class QuizQuestionResponse(BaseModel):
+    type: str  # "mcq" or "self_reflect"
+    question: str
+    options: Optional[List[str]] = None  # For MCQ questions
+    correct_answer: Optional[int] = None  # For MCQ questions
+    topic: str
+    complexity: str
+
+class QuizResponse(BaseModel):
+    quiz_id: str
+    user_id: str
+    project_id: str
+    questions: List[QuizQuestionResponse]
+    time_limit: int
+    documents: List[str]
+    created_at: str
+    status: str
+
+class QuizResultResponse(BaseModel):
+    questions: List[Dict[str, Any]]
+    total_score: float
+    correct_count: int
+    partial_count: int
+    incorrect_count: int
 
 

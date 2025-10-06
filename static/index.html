@@ -319,6 +319,13 @@
                       </svg>
                       <span>Search</span>
                     </button>
+                    <button id="quiz-link" class="action-pill" title="Create quiz from selected documents">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 12l2 2 4-4"></path>
+                        <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"></path>
+                      </svg>
+                      <span>Quiz</span>
+                    </button>
                   </div>
                 </div>
                 <div class="chat-hint" id="chat-hint">
@@ -433,6 +440,99 @@
     </div>
   </div>
 
+  <!-- Quiz Setup Modal -->
+  <div id="quiz-setup-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="quiz-setup-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="quiz-setup-title">Create Quiz</h2>
+        <p class="modal-subtitle">Configure your quiz settings</p>
+      </div>
+      <form id="quiz-setup-form">
+        <!-- Step 1: Question Configuration -->
+        <div class="quiz-step" id="quiz-step-1">
+          <div class="form-group">
+            <label>How many questions would you like?</label>
+            <textarea id="quiz-questions-input" placeholder="Tell me how many MCQ and self-reflect questions you want. For example: 'I want 25 multiple choice questions and 10 self-reflection questions' or 'Give me 30 questions total, split between MCQ and self-reflect questions'" rows="3" required></textarea>
+          </div>
+        </div>
+
+        <!-- Step 2: Time Limit -->
+        <div class="quiz-step" id="quiz-step-2" style="display:none;">
+          <div class="form-group">
+            <label>Time Limit (minutes)</label>
+            <input type="number" id="quiz-time-limit" placeholder="Enter time limit in minutes (0 for no limit)" min="0" value="0">
+            <small>Enter 0 for no time limit</small>
+          </div>
+        </div>
+
+        <!-- Step 3: Document Selection -->
+        <div class="quiz-step" id="quiz-step-3" style="display:none;">
+          <div class="form-group">
+            <label>Select Documents</label>
+            <div id="quiz-document-list" class="document-checkbox-list">
+              <!-- Documents will be populated here -->
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="quiz-prev-step" class="btn-secondary" style="display:none;">Previous</button>
+          <button type="button" id="quiz-next-step" class="btn-primary">Next</button>
+          <button type="button" id="quiz-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" id="quiz-submit" class="btn-primary" style="display:none;">Create Quiz</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Quiz Taking Modal -->
+  <div id="quiz-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="quiz-title">
+    <div class="modal-content quiz-modal-content">
+      <div class="modal-header">
+        <h2 id="quiz-title">Quiz</h2>
+        <div class="quiz-timer" id="quiz-timer">Time: --:--</div>
+      </div>
+      <div class="quiz-content">
+        <div class="quiz-progress">
+          <div class="quiz-progress-bar">
+            <div class="quiz-progress-fill" id="quiz-progress-fill"></div>
+          </div>
+          <span class="quiz-progress-text" id="quiz-progress-text">Question 1 of 10</span>
+        </div>
+        
+        <div class="quiz-question" id="quiz-question">
+          <!-- Question content will be populated here -->
+        </div>
+        
+        <div class="quiz-answers" id="quiz-answers">
+          <!-- Answer options will be populated here -->
+        </div>
+        
+        <div class="quiz-navigation">
+          <button id="quiz-prev" class="btn-secondary" disabled>Previous</button>
+          <button id="quiz-next" class="btn-primary">Next</button>
+          <button id="quiz-submit" class="btn-primary" style="display:none;">Submit Quiz</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quiz Results Modal -->
+  <div id="quiz-results-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-labelledby="quiz-results-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="quiz-results-title">Quiz Results</h2>
+        <p class="modal-subtitle">Your quiz has been completed</p>
+      </div>
+      <div class="quiz-results-content" id="quiz-results-content">
+        <!-- Results will be populated here -->
+      </div>
+      <div class="form-actions">
+        <button type="button" id="quiz-results-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loading Overlay -->
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="loading-content">
@@ -451,5 +551,6 @@
   <script src="/static/script.js"></script>
   <script src="/static/sessions.js"></script>
   <script src="/static/analytics.js"></script>
+  <script src="/static/quiz.js"></script>
 </body>
 </html>

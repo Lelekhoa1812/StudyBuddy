@@ -78,6 +78,29 @@ class RAGStore:
             return serializable_doc
         return None
 
+    def get_file_chunks(self, user_id: str, project_id: str, filename: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get chunks for a specific file"""
+        cursor = self.chunks.find({
+            "user_id": user_id,
+            "project_id": project_id,
+            "filename": filename
+        }).limit(limit)
+        
+        chunks = []
+        for doc in cursor:
+            # Convert MongoDB document to JSON-serializable format
+            serializable_doc = {}
+            for key, value in doc.items():
+                if key == '_id':
+                    serializable_doc[key] = str(value)
+                elif hasattr(value, 'isoformat'):
+                    serializable_doc[key] = value.isoformat()
+                else:
+                    serializable_doc[key] = value
+            chunks.append(serializable_doc)
+        
+        return chunks
+
     def list_files(self, user_id: str, project_id: str):
         """List all files for a project with their summaries"""
         files_cursor = self.files.find(

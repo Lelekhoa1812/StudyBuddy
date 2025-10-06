@@ -132,6 +132,18 @@
         searchLink.classList.toggle('active');
       });
     }
+    
+    // Quiz link toggle
+    const quizLink = document.getElementById('quiz-link');
+    if (quizLink) {
+      quizLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Open quiz setup modal
+        if (window.__sb_open_quiz_setup) {
+          window.__sb_open_quiz_setup();
+        }
+      });
+    }
   }
 
   function handleFileSelection(files) {

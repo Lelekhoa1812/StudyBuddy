@@ -100,7 +100,6 @@ PY
   < "$UPLOAD_BODY")
 fi
 
-echo "Extracted JOB_ID: '$JOB_ID'"
 
 if [ -z "${JOB_ID:-}" ]; then
   echo "❌ Failed to extract job_id from upload response"; exit 1
@@ -113,16 +112,21 @@ echo ""
 
 echo "📊 Step 3: Monitor Upload Progress"
 echo "----------------------------------"
-for i in {1..48}; do
-  echo "Checking progress (attempt $i/48)..."
-  json_with_status GET "$BACKEND_URL/upload/status?job_id=$JOB_ID" -H "Accept: application/json" | sed 's/^/  /'
-  STATUS_LINE=$(json_with_status GET "$BACKEND_URL/upload/status?job_id=$JOB_ID" -H "Accept: application/json" | tail -n +1)
-  if echo "$STATUS_LINE" | grep -q '"status":"completed"'; then
+for i in {1..12}; do
+  echo "Checking progress (attempt $i/12)..."
+  STATUS_RESPONSE=$(curl -L --http1.1 --fail-with-body -sS \
+    --connect-timeout 60 --retry 3 --retry-delay 4 --retry-connrefused \
+    -H "Accept: application/json" \
+    "$BACKEND_URL/upload/status?job_id=$JOB_ID" 2>/dev/null || echo '{"status":"error"}')
+  
+  echo "  Status response: $STATUS_RESPONSE"
+  
+  if echo "$STATUS_RESPONSE" | grep -q '"status":"completed"'; then
     echo "✅ Upload completed successfully!"; break
-  elif echo "$STATUS_LINE" | grep -q '"status":"processing"'; then
+  elif echo "$STATUS_RESPONSE" | grep -q '"status":"processing"'; then
     echo "⏳ Still processing... waiting 20 seconds"; sleep 20
   else
-    echo "❌ Upload failed or unknown status"; break
+    echo "❌ Upload failed or unknown status: $STATUS_RESPONSE"; break
   fi
   echo ""
 done
@@ -179,16 +183,21 @@ echo ""
 
 echo "📊 Step 5: Monitor Upload 2 Progress"
 echo "-------------------------------------"
-for i in {1..48}; do
-  echo "Checking progress (attempt $i/48)..."
-  json_with_status GET "$BACKEND_URL/upload/status?job_id=$JOB_ID2" -H "Accept: application/json" | sed 's/^/  /'
-  STATUS_LINE=$(json_with_status GET "$BACKEND_URL/upload/status?job_id=$JOB_ID2" -H "Accept: application/json" | tail -n +1)
-  if echo "$STATUS_LINE" | grep -q '"status":"completed"'; then
+for i in {1..12}; do
+  echo "Checking progress (attempt $i/12)..."
+  STATUS_RESPONSE=$(curl -L --http1.1 --fail-with-body -sS \
+    --connect-timeout 60 --retry 3 --retry-delay 4 --retry-connrefused \
+    -H "Accept: application/json" \
+    "$BACKEND_URL/upload/status?job_id=$JOB_ID2" 2>/dev/null || echo '{"status":"error"}')
+  
+  echo "  Status response: $STATUS_RESPONSE"
+  
+  if echo "$STATUS_RESPONSE" | grep -q '"status":"completed"'; then
     echo "✅ Upload 2 completed successfully!"; break
-  elif echo "$STATUS_LINE" | grep -q '"status":"processing"'; then
+  elif echo "$STATUS_RESPONSE" | grep -q '"status":"processing"'; then
     echo "⏳ Still processing... waiting 20 seconds"; sleep 20
   else
-    echo "❌ Upload 2 failed or unknown status"; break
+    echo "❌ Upload 2 failed or unknown status: $STATUS_RESPONSE"; break
   fi
   echo ""
 done

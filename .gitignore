@@ -1,8 +1,16 @@
+# Env
 .env
+
+# Docs
 diagram
 
-# For ingestion pipeline
+# Ingestions
 ingestion_python/.git
 ingestion_js/.git
+
+# Modules
 embedder 
+node_modules
+
+# Resources
 exefiles

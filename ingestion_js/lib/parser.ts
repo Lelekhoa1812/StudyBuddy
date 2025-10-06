@@ -1,24 +1,27 @@
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf'
+import pdfTextExtract from 'pdf-text-extract'
 import mammoth from 'mammoth'
 
-export type Page = { page_num: number; text: string; images: Uint8Array[] }
+export type Page = { page_num: number; text: string; images: Buffer[] }
 
-export async function parsePdfBytes(buf: Uint8Array): Promise<Page[]> {
-  const loadingTask = pdfjs.getDocument({ data: buf })
-  const pdf = await loadingTask.promise
-  const out: Page[] = []
-  const num = pdf.numPages
-  for (let i = 1; i <= num; i++) {
-    const page = await pdf.getPage(i)
-    const content = await page.getTextContent()
-    const text = (content.items as any[]).map((it: any) => (it.str || '')).join(' ')
-    out.push({ page_num: i, text, images: [] })
-  }
-  return out
+export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
+  return new Promise((resolve, reject) => {
+    pdfTextExtract(buf, (err, pages) => {
+      if (err) {
+        reject(err)
+        return
+      }
+      const out: Page[] = []
+      for (let i = 0; i < pages.length; i++) {
+        out.push({ page_num: i + 1, text: pages[i] || '', images: [] })
+      }
+      if (out.length === 0) out.push({ page_num: 1, text: '', images: [] })
+      resolve(out)
+    })
+  })
 }
 
-export async function parseDocxBytes(buf: Uint8Array): Promise<Page[]> {
-  const { value } = await mammoth.extractRawText({ buffer: Buffer.from(buf) })
+export async function parseDocxBytes(buf: Buffer): Promise<Page[]> {
+  const { value } = await mammoth.extractRawText({ buffer: buf })
   const text = value || ''
   return [{ page_num: 1, text, images: [] }]
 }
@@ -31,7 +34,7 @@ export function inferMime(filename: string): string {
   return 'application/octet-stream'
 }
 
-export async function extractPages(filename: string, file: Uint8Array): Promise<Page[]> {
+export async function extractPages(filename: string, file: Buffer): Promise<Page[]> {
   const mime = inferMime(filename)
   if (mime === 'application/pdf') return parsePdfBytes(file)
   if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return parseDocxBytes(file)

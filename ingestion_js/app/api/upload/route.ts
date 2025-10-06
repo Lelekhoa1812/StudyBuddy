@@ -51,13 +51,16 @@ export async function POST(req: NextRequest) {
   const job_id = randomUUID()
   await createJob(job_id, preloaded.length)
 
-  // Start background processing
-  processAll(job_id, user_id, project_id, preloaded, replaceSet).catch(async (e) => {
-    console.error(`[UPLOAD_DEBUG] Background processing failed for job ${job_id}:`, e)
+  // For Vercel serverless, we need to process synchronously due to timeout limits
+  // Start processing immediately
+  try {
+    await processAll(job_id, user_id, project_id, preloaded, replaceSet)
+    return NextResponse.json({ job_id, status: 'completed', total_files: preloaded.length })
+  } catch (e) {
+    console.error(`[UPLOAD_DEBUG] Processing failed for job ${job_id}:`, e)
     await updateJob(job_id, { status: 'failed', last_error: String(e) })
-  })
-
-  return NextResponse.json({ job_id, status: 'processing', total_files: preloaded.length })
+    return NextResponse.json({ job_id, status: 'failed', total_files: preloaded.length, error: String(e) })
+  }
 }
 
 async function processAll(job_id: string, user_id: string, project_id: string, files: Array<{ name: string; buf: Buffer }>, replaceSet: Set<string>) {

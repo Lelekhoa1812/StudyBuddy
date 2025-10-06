@@ -115,7 +115,7 @@ echo "----------------------------------"
 for i in {1..12}; do
   echo "Checking progress (attempt $i/12)..."
   STATUS_RESPONSE=$(curl -L --http1.1 --fail-with-body -sS \
-    --connect-timeout 60 --retry 3 --retry-delay 4 --retry-connrefused \
+    --connect-timeout 1800 --retry 3 --retry-delay 4 --retry-connrefused \
     -H "Accept: application/json" \
     "$BACKEND_URL/upload/status?job_id=$JOB_ID" 2>/dev/null || echo '{"status":"error"}')
   
@@ -124,7 +124,7 @@ for i in {1..12}; do
   if echo "$STATUS_RESPONSE" | grep -q '"status":"completed"'; then
     echo "✅ Upload completed successfully!"; break
   elif echo "$STATUS_RESPONSE" | grep -q '"status":"processing"'; then
-    echo "⏳ Still processing... waiting 20 seconds"; sleep 20
+    echo "⏳ Still processing... waiting 120 seconds"; sleep 120
   else
     echo "❌ Upload failed or unknown status: $STATUS_RESPONSE"; break
   fi
@@ -139,7 +139,7 @@ UPLOAD_BODY2=$(mktemp)
 
 set +e
 HTTP_CODE2=$(curl -L --http1.1 --fail-with-body -sS \
-  --connect-timeout 60 --retry 3 --retry-delay 4 --retry-connrefused \
+  --connect-timeout 1800 --retry 3 --retry-delay 4 --retry-connrefused \
   -H "Expect:" \
   -X POST "$BACKEND_URL/upload" \
   -F "user_id=$USER_ID" \

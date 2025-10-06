@@ -1,18 +1,23 @@
-import pdfParse from 'pdf-parse'
+import * as pdfjs from 'pdfjs-dist'
 import mammoth from 'mammoth'
+
+// Configure pdfjs in Node
+// @ts-ignore
+pdfjs.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.js'
 
 export type Page = { page_num: number; text: string; images: Buffer[] }
 
 export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
-  // pdf-parse: text only; image extraction is non-trivial in Node serverless
-  const data = await pdfParse(buf)
-  const text = data.text || ''
-  const pages = text.split('\f') // pdf-parse uses form-feed between pages when available
+  const loadingTask = pdfjs.getDocument({ data: buf })
+  const pdf = await loadingTask.promise
   const out: Page[] = []
-  for (let i = 0; i < pages.length; i++) {
-    out.push({ page_num: i + 1, text: pages[i] || '', images: [] })
+  const num = pdf.numPages
+  for (let i = 1; i <= num; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const text = content.items.map((it: any) => (it.str || '')).join(' ')
+    out.push({ page_num: i, text, images: [] })
   }
-  if (out.length === 0) out.push({ page_num: 1, text, images: [] })
   return out
 }
 

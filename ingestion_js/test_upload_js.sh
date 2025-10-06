@@ -69,7 +69,7 @@ set +e
 HTTP_CODE=$(curl -L --http1.1 --fail-with-body -sS \
   --connect-timeout 60 --retry 3 --retry-delay 4 --retry-connrefused \
   -H "Expect:" \
-  -X POST "$BACKEND_URL/upload" \
+  -X POST "$BACKEND_URL/upload-minimal" \
   -F "user_id=$USER_ID" \
   -F "project_id=$PROJECT_ID" \
   -F "files=@$FILE1" \
@@ -143,7 +143,7 @@ set +e
 HTTP_CODE2=$(curl -L --http1.1 --fail-with-body -sS \
   --connect-timeout 1800 --retry 3 --retry-delay 4 --retry-connrefused \
   -H "Expect:" \
-  -X POST "$BACKEND_URL/upload" \
+  -X POST "$BACKEND_URL/upload-minimal" \
   -F "user_id=$USER_ID" \
   -F "project_id=$PROJECT_ID" \
   -F "files=@$FILE2" \

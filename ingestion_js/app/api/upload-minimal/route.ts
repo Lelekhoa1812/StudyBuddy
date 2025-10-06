@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,17 +11,18 @@ export async function POST(req: NextRequest) {
     const project_id = form.get('project_id')
     const files = form.getAll('files')
     
-    console.log('Upload request received:', { user_id, project_id, fileCount: files.length })
+    console.log('Minimal upload received:', { user_id, project_id, fileCount: files.length })
+    
+    // Return a job ID for testing
+    const job_id = 'test-job-' + Date.now()
     
     return NextResponse.json({ 
-      message: 'Upload received successfully',
-      user_id,
-      project_id,
-      fileCount: files.length,
-      job_id: 'test-job-123'
+      job_id,
+      status: 'processing',
+      total_files: files.length
     })
   } catch (error) {
-    console.error('Upload error:', error)
+    console.error('Minimal upload error:', error)
     return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }

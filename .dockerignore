@@ -24,7 +24,8 @@ coverage.xml
 # Ignore documentation files (keep only main README)
 *.md
 !README.md
-ingestion_pipeline
+ingestion_python
+ingestion_js
 embedder
 exefiles
 diagram

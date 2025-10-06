@@ -2,36 +2,94 @@ import slugify from 'slugify'
 import type { Page } from './parser'
 import { cheapSummarize, cleanChunkText } from './summarizer'
 
-const MAX_WORDS = 220
-const OVERLAP_WORDS = 40
+const MAX_WORDS = 500
+const MIN_WORDS = 150
+const OVERLAP_WORDS = 50
 
 function byHeadings(text: string): string[] {
-  const lines = text.split('\n')
+  // Enhanced patterns matching Python logic
+  const patterns = [
+    /^(#{1,6}\s.*)\s*$/gm,  // Markdown headers
+    /^([0-9]+\.\s+[^\n]+)\s*$/gm,  // Numbered sections
+    /^([A-Z][A-Za-z0-9\s\-]{2,}\n[-=]{3,})\s*$/gm,  // Underlined headers
+    /^(Chapter\s+\d+.*|Section\s+\d+.*)\s*$/gm,  // Chapter/Section headers
+    /^(Abstract|Introduction|Conclusion|References|Bibliography)\s*$/gm,  // Common academic sections
+  ]
+  
   const parts: string[] = []
-  let current: string[] = []
-  const flush = () => { if (current.length) { parts.push(current.join('\n')); current = [] } }
-  const headingRe = /^(#+\s+|\d+\.|[A-Z][A-Za-z\s\-]{0,40}:?|^\s*\[[A-Za-z ]+\]\s*$)/
-  for (const ln of lines) {
-    if (headingRe.test(ln)) flush()
-    current.push(ln)
+  let last = 0
+  const allMatches: Array<{start: number, end: number, header: string}> = []
+  
+  // Find all matches from all patterns
+  for (const pattern of patterns) {
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      allMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        header: match[1].trim()
+      })
+    }
   }
-  flush()
+  
+  // Sort matches by position
+  allMatches.sort((a, b) => a.start - b.start)
+  
+  // Split text based on matches
+  for (const { start, end, header } of allMatches) {
+    if (start > last) {
+      parts.push(text.slice(last, start))
+    }
+    parts.push(text.slice(start, end))
+    last = end
+  }
+  
+  if (last < text.length) {
+    parts.push(text.slice(last))
+  }
+  
+  if (parts.length === 0) {
+    parts.push(text)
+  }
+  
   return parts.filter(p => p.trim().length > 0)
 }
 
 function createOverlappingChunks(blocks: string[]): string[] {
-  const out: string[] = []
-  let words: string[] = []
-  for (const b of blocks) {
-    words.push(...b.split(/\s+/))
-    while (words.length > MAX_WORDS) {
-      const chunk = words.slice(0, MAX_WORDS).join(' ')
-      out.push(chunk)
-      words = words.slice(MAX_WORDS - OVERLAP_WORDS)
+  const chunks: string[] = []
+  
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]
+    const words = block.split(/\s+/).filter(w => w.length > 0)
+    
+    if (words.length === 0) continue
+    
+    // If block is small enough, use as-is
+    if (words.length <= MAX_WORDS) {
+      chunks.push(block)
+      continue
+    }
+    
+    // Split large blocks with overlap
+    let start = 0
+    while (start < words.length) {
+      const end = Math.min(start + MAX_WORDS, words.length)
+      let chunkWords = words.slice(start, end)
+      
+      // Add overlap from previous chunk if available
+      if (start > 0 && chunks.length > 0) {
+        const prevWords = chunks[chunks.length - 1].split(/\s+/).filter(w => w.length > 0)
+        const overlapStart = Math.max(0, prevWords.length - OVERLAP_WORDS)
+        const overlapWords = prevWords.slice(overlapStart)
+        chunkWords = [...overlapWords, ...chunkWords]
+      }
+      
+      chunks.push(chunkWords.join(' '))
+      start = end - OVERLAP_WORDS  // Overlap with next chunk
     }
   }
-  if (words.length) out.push(words.join(' '))
-  return out
+  
+  return chunks
 }
 
 export async function buildCardsFromPages(pages: Page[], filename: string, user_id: string, project_id: string) {

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { extractPages } from '@/lib/parser'
 import { buildCardsFromPages } from '@/lib/chunker'
 import { embedRemote } from '@/lib/embedder'
+import { captionImage, normalizeCaption } from '@/lib/captioner'
 import { deleteFileData, storeCards, upsertFileSummary } from '@/lib/mongo'
 import { cheapSummarize } from '@/lib/summarizer'
 import { createJob, updateJob } from '@/lib/jobs'
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
   // Start processing immediately
   try {
     await processAll(job_id, user_id, project_id, preloaded, replaceSet)
+    await updateJob(job_id, { status: 'completed' })
     return NextResponse.json({ job_id, status: 'completed', total_files: preloaded.length })
   } catch (e) {
     console.error(`[UPLOAD_DEBUG] Processing failed for job ${job_id}:`, e)
@@ -79,6 +81,25 @@ async function processAll(job_id: string, user_id: string, project_id: string, f
       console.log(`[UPLOAD_DEBUG] Extracting pages from ${fname}`)
       const pages = await extractPages(fname, buf)
       console.log(`[UPLOAD_DEBUG] Extracted ${pages.length} pages`)
+
+      // Process images with captions (best effort - images not extracted in current parser)
+      // This matches Python behavior where captions are appended to page text
+      for (const page of pages) {
+        if (page.images && page.images.length > 0) {
+          const captions: string[] = []
+          for (const img of page.images) {
+            try {
+              const caption = await captionImage(img)
+              if (caption) captions.push(normalizeCaption(caption))
+            } catch (e) {
+              console.warn(`[${job_id}] Caption error in ${fname}: ${e}`)
+            }
+          }
+          if (captions.length > 0) {
+            page.text = (page.text + '\n\n' + captions.map(c => `[Image] ${c}`).join('\n')).trim()
+          }
+        }
+      }
 
       console.log(`[UPLOAD_DEBUG] Building cards from pages`)
       const cards = await buildCardsFromPages(pages, fname, user_id, project_id)

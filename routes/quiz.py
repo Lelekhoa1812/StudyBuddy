@@ -175,14 +175,20 @@ async def get_document_summaries(user_id: str, project_id: str, documents: List[
                 summaries.append(f"[{doc}] {file_data['summary']}")
             
             # Get additional chunks for more context
-            chunks = rag.get_file_chunks(user_id=user_id, project_id=project_id, filename=doc, limit=30)
+            chunks = rag.get_file_chunks(user_id=user_id, project_id=project_id, filename=doc, limit=50)
             if chunks:
-                chunk_text = "\n".join([chunk.get("content", "") for chunk in chunks[:15]])
-                summaries.append(f"[{doc} - Additional Content] {chunk_text[:3000]}...")
+                # Filter out very short chunks and prioritize longer, more informative ones
+                meaningful_chunks = [chunk for chunk in chunks if len(chunk.get("content", "")) > 100]
+                if meaningful_chunks:
+                    chunk_text = "\n".join([chunk.get("content", "") for chunk in meaningful_chunks[:20]])
+                    summaries.append(f"[{doc} - Detailed Content] {chunk_text[:4000]}...")
                 
         except Exception as e:
             logger.warning(f"[QUIZ] Failed to get summary for {doc}: {e}")
             continue
+    
+    if not summaries:
+        raise HTTPException(400, detail="No content found in selected documents. Please ensure documents contain text content.")
     
     # Use NVIDIA_LARGE for comprehensive analysis if content is long
     combined_summaries = "\n\n".join(summaries)
@@ -364,21 +370,31 @@ async def generate_questions_and_answers(plan: List[Dict], document_summaries: s
 
 async def generate_task_questions(task: Dict, document_summaries: str, nvidia_rotator, complexity: str = None) -> List[Dict]:
     """Generate questions for a specific task using appropriate model based on complexity"""
-    system_prompt = f"""You are an expert quiz question generator.
+    system_prompt = f"""You are an expert quiz question generator creating high-quality educational questions.
     Generate {task.get('number_mcq', 0)} multiple choice questions and {task.get('number_sr', 0)} self-reflection questions.
     
     For MCQ questions:
-    - Create clear, well-structured questions
-    - Provide 4 answer options (A, B, C, D)
-    - Mark the correct answer
-    - Make distractors plausible but incorrect
+    - Create clear, well-structured questions that test understanding
+    - Provide 4 answer options (A, B, C, D) that are plausible
+    - Mark the correct answer (0-3 index)
+    - Make distractors plausible but clearly incorrect
     - Focus on the specific topic: {task.get('topic', 'General')}
+    - Ensure questions are answerable from the provided content
+    - Avoid trivial or overly obvious questions
     
     For self-reflection questions:
     - Create open-ended questions that require critical thinking
     - Focus on analysis, evaluation, and synthesis
     - Encourage personal reflection and application
     - Relate to the specific topic: {task.get('topic', 'General')}
+    - Make questions thought-provoking but not overly complex
+    - Ensure they can be answered based on the provided content
+    
+    Quality Requirements:
+    - Questions must be directly answerable from the provided content
+    - Avoid questions that require external knowledge
+    - Ensure clarity and proper grammar
+    - Make questions educational and meaningful
     
     Return a JSON array of question objects with this format:
     {{
@@ -392,9 +408,9 @@ async def generate_task_questions(task: Dict, document_summaries: str, nvidia_ro
     """
     
     user_prompt = f"""Task: {task}
-    Document content: {document_summaries[:4000]}...
+    Document content: {document_summaries[:5000]}...
     
-    Generate questions:"""
+    Generate high-quality questions based ONLY on the provided content:"""
     
     try:
         # Use appropriate model based on complexity
@@ -416,11 +432,53 @@ async def generate_task_questions(task: Dict, document_summaries: str, nvidia_ro
         )
         
         questions = json.loads(response.strip())
-        return questions if isinstance(questions, list) else []
+        
+        # Validate questions
+        validated_questions = []
+        for question in questions:
+            if validate_question(question):
+                validated_questions.append(question)
+            else:
+                logger.warning(f"[QUIZ] Invalid question filtered out: {question}")
+        
+        return validated_questions
         
     except Exception as e:
         logger.warning(f"[QUIZ] Failed to generate questions for task: {e}")
         return []
+
+
+def validate_question(question: Dict) -> bool:
+    """Validate that a question meets quality standards"""
+    try:
+        # Check required fields
+        if not question.get("type") or question["type"] not in ["mcq", "self_reflect"]:
+            return False
+        
+        if not question.get("question") or len(question["question"]) < 10:
+            return False
+        
+        if not question.get("topic"):
+            return False
+        
+        # Validate MCQ questions
+        if question["type"] == "mcq":
+            options = question.get("options", [])
+            if len(options) != 4:
+                return False
+            
+            correct_answer = question.get("correct_answer")
+            if correct_answer is None or not isinstance(correct_answer, int) or correct_answer < 0 or correct_answer > 3:
+                return False
+            
+            # Check for empty options
+            if any(not option or len(option.strip()) < 1 for option in options):
+                return False
+        
+        return True
+        
+    except Exception:
+        return False
 
 
 async def mark_quiz_answers(questions: List[Dict], user_answers: Dict, nvidia_rotator) -> Dict:

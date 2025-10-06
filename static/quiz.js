@@ -195,7 +195,7 @@
     const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
     
     if (!user || !currentProject) {
-      alert('Please sign in and select a project');
+      showNotification('Please sign in and select a project', 'error');
       return;
     }
 
@@ -208,17 +208,24 @@
       .map(input => input.value);
 
     if (selectedDocs.length === 0) {
-      alert('Please select at least one document');
+      showNotification('Please select at least one document', 'warning');
       return;
     }
 
     if (!questionsInput) {
-      alert('Please specify how many questions you want');
+      showNotification('Please specify how many questions you want', 'warning');
       return;
     }
 
-    // Show loading
+    // Validate questions input
+    if (questionsInput.length < 10) {
+      showNotification('Please provide more details about your question requirements', 'warning');
+      return;
+    }
+
+    // Show loading with progress updates
     showLoading('Creating quiz...');
+    updateLoadingProgress('Parsing your requirements...', 20);
 
     try {
       // Create quiz
@@ -229,6 +236,8 @@
       formData.append('time_limit', timeLimit.toString());
       formData.append('documents', JSON.stringify(selectedDocs));
 
+      updateLoadingProgress('Analyzing documents...', 40);
+      
       const response = await fetch('/quiz/create', {
         method: 'POST',
         body: formData
@@ -237,6 +246,11 @@
       const data = await response.json();
 
       if (response.ok) {
+        updateLoadingProgress('Generating questions...', 80);
+        
+        // Simulate processing time for better UX
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         hideLoading();
         closeQuizSetup();
         
@@ -246,15 +260,16 @@
         quizAnswers = {};
         timeRemaining = timeLimit * 60; // Convert to seconds
         
+        showNotification(`Quiz created successfully! ${currentQuiz.questions.length} questions generated.`, 'success');
         startQuiz();
       } else {
         hideLoading();
-        alert(data.detail || 'Failed to create quiz');
+        showNotification(data.detail || 'Failed to create quiz', 'error');
       }
     } catch (error) {
       hideLoading();
       console.error('Quiz creation failed:', error);
-      alert('Failed to create quiz. Please try again.');
+      showNotification('Failed to create quiz. Please try again.', 'error');
     }
   }
 
@@ -408,12 +423,30 @@
       clearInterval(quizTimer);
     }
 
-    // Show loading
+    // Validate that all questions are answered
+    const unansweredQuestions = [];
+    for (let i = 0; i < currentQuiz.questions.length; i++) {
+      if (quizAnswers[i] === undefined || quizAnswers[i] === null || quizAnswers[i] === '') {
+        unansweredQuestions.push(i + 1);
+      }
+    }
+
+    if (unansweredQuestions.length > 0) {
+      const confirmSubmit = confirm(`You have ${unansweredQuestions.length} unanswered questions (${unansweredQuestions.join(', ')}). Do you want to submit anyway?`);
+      if (!confirmSubmit) {
+        return;
+      }
+    }
+
+    // Show loading with progress
     showLoading('Submitting quiz...');
+    updateLoadingProgress('Processing your answers...', 30);
 
     try {
       const user = window.__sb_get_user();
       const currentProject = window.__sb_get_current_project && window.__sb_get_current_project();
+
+      updateLoadingProgress('Marking your answers...', 60);
 
       const formData = new FormData();
       formData.append('user_id', user.user_id);
@@ -429,17 +462,22 @@
       const data = await response.json();
 
       if (response.ok) {
+        updateLoadingProgress('Generating feedback...', 90);
+        
+        // Simulate processing time for better UX
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
         hideLoading();
         closeQuizModal();
         showQuizResults(data.results);
       } else {
         hideLoading();
-        alert(data.detail || 'Failed to submit quiz');
+        showNotification(data.detail || 'Failed to submit quiz', 'error');
       }
     } catch (error) {
       hideLoading();
       console.error('Quiz submission failed:', error);
-      alert('Failed to submit quiz. Please try again.');
+      showNotification('Failed to submit quiz. Please try again.', 'error');
     }
   }
 
@@ -451,22 +489,37 @@
     const incorrectAnswers = results.questions.filter(q => q.status === 'incorrect').length;
     const score = Math.round((correctAnswers + partialAnswers * 0.5) / totalQuestions * 100);
 
+    // Determine performance level
+    let performanceLevel = 'Needs Improvement';
+    let performanceColor = 'var(--error)';
+    if (score >= 90) {
+      performanceLevel = 'Excellent';
+      performanceColor = 'var(--success)';
+    } else if (score >= 80) {
+      performanceLevel = 'Good';
+      performanceColor = 'var(--accent)';
+    } else if (score >= 70) {
+      performanceLevel = 'Satisfactory';
+      performanceColor = 'var(--warning)';
+    }
+
     quizResultsContent.innerHTML = `
       <div class="quiz-result-summary">
-        <div class="quiz-result-stat">
-          <div class="quiz-result-stat-value">${score}%</div>
+        <div class="quiz-result-stat quiz-result-score">
+          <div class="quiz-result-stat-value" style="color: ${performanceColor}">${score}%</div>
           <div class="quiz-result-stat-label">Score</div>
+          <div class="quiz-result-performance">${performanceLevel}</div>
         </div>
         <div class="quiz-result-stat">
-          <div class="quiz-result-stat-value">${correctAnswers}</div>
+          <div class="quiz-result-stat-value" style="color: var(--success)">${correctAnswers}</div>
           <div class="quiz-result-stat-label">Correct</div>
         </div>
         <div class="quiz-result-stat">
-          <div class="quiz-result-stat-value">${partialAnswers}</div>
+          <div class="quiz-result-stat-value" style="color: var(--warning)">${partialAnswers}</div>
           <div class="quiz-result-stat-label">Partial</div>
         </div>
         <div class="quiz-result-stat">
-          <div class="quiz-result-stat-value">${incorrectAnswers}</div>
+          <div class="quiz-result-stat-value" style="color: var(--error)">${incorrectAnswers}</div>
           <div class="quiz-result-stat-label">Incorrect</div>
         </div>
       </div>
@@ -483,12 +536,14 @@
             ${question.type === 'mcq' ? `
               <div class="quiz-result-answer">
                 <div class="quiz-result-answer-label">Your Answer:</div>
-                <div class="quiz-result-answer-content">${question.options[question.user_answer] || 'No answer'}</div>
+                <div class="quiz-result-answer-content ${question.status === 'correct' ? 'correct' : question.status === 'incorrect' ? 'incorrect' : ''}">${question.options[question.user_answer] || 'No answer'}</div>
               </div>
-              <div class="quiz-result-answer">
-                <div class="quiz-result-answer-label">Correct Answer:</div>
-                <div class="quiz-result-answer-content">${question.options[question.correct_answer]}</div>
-              </div>
+              ${question.status === 'incorrect' ? `
+                <div class="quiz-result-answer">
+                  <div class="quiz-result-answer-label">Correct Answer:</div>
+                  <div class="quiz-result-answer-content correct">${question.options[question.correct_answer]}</div>
+                </div>
+              ` : ''}
             ` : `
               <div class="quiz-result-answer">
                 <div class="quiz-result-answer-label">Your Answer:</div>
@@ -507,6 +562,9 @@
     `;
 
     quizResultsModal.classList.remove('hidden');
+    
+    // Show success notification
+    showNotification(`Quiz completed! You scored ${score}% (${performanceLevel})`, 'success');
   }
 
   function closeQuizModal() {
@@ -533,11 +591,51 @@
     }
   }
 
+  function updateLoadingProgress(message, progress) {
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingMessage = document.getElementById('loading-message');
+    const loadingProgress = document.getElementById('loading-progress');
+    
+    if (loadingOverlay && loadingMessage) {
+      loadingMessage.textContent = message;
+      if (loadingProgress) {
+        loadingProgress.style.width = `${progress}%`;
+      }
+    }
+  }
+
   function hideLoading() {
     const loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) {
       loadingOverlay.classList.add('hidden');
     }
+  }
+
+  function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+      <div class="notification-content">
+        <span class="notification-message">${message}</span>
+        <button class="notification-close">&times;</button>
+      </div>
+    `;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.remove();
+      }
+    }, 5000);
+    
+    // Close button
+    notification.querySelector('.notification-close').addEventListener('click', () => {
+      notification.remove();
+    });
   }
 
   // Expose functions globally

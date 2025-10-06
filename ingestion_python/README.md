@@ -13,7 +13,7 @@ short_description: 'backend for data ingestion'
 
 A dedicated service for processing file uploads and storing them in MongoDB Atlas. This service mirrors the main system's file processing functionality while running as a separate service to share the processing load.
 
-[API docs](API.md)  |  [System docs](COMPATIBILITY.md)
+[API docs](CURL.md)
 
 ## 🏗️ Architecture
 

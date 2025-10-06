@@ -25,7 +25,7 @@ A dedicated service for processing file uploads and storing them in MongoDB Atla
 │  │                 │◄──►│                  │◄──►│   (Port 7860)   │              │
 │  │ - File Upload   │    │ - Route Requests │    │ - Chat & Reports│              │
 │  │ - Chat Interface│    │ - Health Checks │    │ - User Management│             │
-│  │ - Project Mgmt │    │ - Load Balancing │    │ - Analytics     │              │
+│  │ - Project Mgmt  │    │ - Load Balancing │    │ - Analytics     │              │
 │  └─────────────────┘    └──────────────────┘    └─────────────────┘              │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                         │

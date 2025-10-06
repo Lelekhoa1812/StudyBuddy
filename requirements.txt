@@ -8,7 +8,6 @@ PyMuPDF==1.24.10
 pillow==10.4.0
 transformers==4.44.2
 torch==2.2.2
-sentence-transformers==3.1.1
 sumy==0.11.0
 numpy==1.26.4
 reportlab==4.0.9

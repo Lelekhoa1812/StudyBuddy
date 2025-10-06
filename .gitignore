@@ -3,4 +3,5 @@ diagram
 
 # For ingestion pipeline
 ingestion_pipeline
+embedder 
 exefiles

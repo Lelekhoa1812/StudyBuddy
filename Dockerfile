@@ -23,25 +23,12 @@ COPY . .
 # Install Python dependencies
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Hugging Face cache directories
+# Optional: general HF cache directory (kept for other models like BLIP)
 ENV HF_HOME="/home/user/.cache/huggingface"
-ENV SENTENCE_TRANSFORMERS_HOME="/home/user/.cache/huggingface/sentence-transformers"
-ENV MEDGEMMA_HOME="/home/user/.cache/huggingface/sentence-transformers"
 
-# Create cache directories and set permissions
-RUN mkdir -p /app/model_cache /home/user/.cache/huggingface/sentence-transformers && \
-    chown -R user:user /app/model_cache /home/user/.cache/huggingface
-
-# Control preloading flags
-ENV PRELOAD_TRANSLATORS="0"
-ENV EMBEDDING_HALF="0"
-
-# Preload embedding model and warmup
-RUN test -f /app/dw_model.py && python /app/dw_model.py || true
-RUN test -f /app/warmup.py && python /app/warmup.py || true
-
-# Ensure ownership stays correct
-RUN chown -R user:user /app/model_cache
+# Ensure cache directory ownership
+RUN mkdir -p /home/user/.cache/huggingface && \
+    chown -R user:user /home/user/.cache/huggingface
 
 # Expose port for HF Spaces
 ENV PORT=7860

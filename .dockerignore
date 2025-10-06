@@ -25,6 +25,7 @@ coverage.xml
 *.md
 !README.md
 ingestion_pipeline
+embedder
 exefiles
 diagram
 diagram.svg

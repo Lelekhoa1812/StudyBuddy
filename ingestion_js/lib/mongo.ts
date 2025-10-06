@@ -99,6 +99,29 @@ export async function deleteFileData(user_id: string, project_id: string, filena
 
 export async function ensureIndexes() {
   const { db } = await getMongo()
-  await db.collection('chunks').createIndex({ user_id: 1, project_id: 1, filename: 1 })
-  await db.collection('files').createIndex({ user_id: 1, project_id: 1, filename: 1 })
+  console.log('[MONGO_DEBUG] Ensuring indexes...')
+  
+  try {
+    await db.collection('chunks').createIndex({ user_id: 1, project_id: 1, filename: 1 }, { unique: false })
+    console.log('[MONGO_DEBUG] Chunks index created/verified')
+  } catch (error: any) {
+    if (error.code === 86) {
+      console.log('[MONGO_DEBUG] Chunks index already exists with different options, skipping')
+    } else {
+      throw error
+    }
+  }
+  
+  try {
+    await db.collection('files').createIndex({ user_id: 1, project_id: 1, filename: 1 }, { unique: false })
+    console.log('[MONGO_DEBUG] Files index created/verified')
+  } catch (error: any) {
+    if (error.code === 86) {
+      console.log('[MONGO_DEBUG] Files index already exists with different options, skipping')
+    } else {
+      throw error
+    }
+  }
+  
+  console.log('[MONGO_DEBUG] Indexes ensured')
 }

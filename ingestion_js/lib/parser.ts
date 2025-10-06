@@ -1,9 +1,5 @@
-import * as pdfjs from 'pdfjs-dist'
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf'
 import mammoth from 'mammoth'
-
-// Configure pdfjs in Node
-// @ts-ignore
-pdfjs.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.js'
 
 export type Page = { page_num: number; text: string; images: Buffer[] }
 
@@ -15,7 +11,7 @@ export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   for (let i = 1; i <= num; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
-    const text = content.items.map((it: any) => (it.str || '')).join(' ')
+    const text = (content.items as any[]).map((it: any) => (it.str || '')).join(' ')
     out.push({ page_num: i, text, images: [] })
   }
   return out

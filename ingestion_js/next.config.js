@@ -1,10 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverActions: {
-      bodySizeLimit: '50mb'
+    serverActions: { bodySizeLimit: '50mb' },
+    serverComponentsExternalPackages: ['pdfjs-dist']
+  },
+  webpack: (config) => {
+    config.resolve = config.resolve || {}
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      canvas: false
     }
+    return config
   }
-};
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig

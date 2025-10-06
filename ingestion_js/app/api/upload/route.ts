@@ -79,19 +79,33 @@ export async function POST(req: NextRequest) {
 
   await createJob(job_id, preloaded_files.length)
 
-  // Process in background
-  ;(async () => {
+  // Process synchronously for Vercel serverless
+  try {
     await processFilesInBackground(job_id, user_id, project_id, preloaded_files, replace_set)
-  })()
-
-  return NextResponse.json(
-    {
-      job_id,
-      status: 'processing',
-      total_files: preloaded_files.length,
-    },
-    { status: 200 }
-  )
+    await updateJob(job_id, { status: 'completed' })
+    
+    return NextResponse.json(
+      {
+        job_id,
+        status: 'completed',
+        total_files: preloaded_files.length,
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error(`[UPLOAD_DEBUG] Processing failed for job ${job_id}:`, error)
+    await updateJob(job_id, { status: 'failed', last_error: String(error) })
+    
+    return NextResponse.json(
+      {
+        job_id,
+        status: 'failed',
+        total_files: preloaded_files.length,
+        error: String(error)
+      },
+      { status: 500 }
+    )
+  }
 }
 
 async function processFilesInBackground(

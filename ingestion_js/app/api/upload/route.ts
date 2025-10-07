@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { extractPages } from '../../../lib/parser'
-import { buildCardsFromPages } from '../../../lib/chunker'
-import { embedRemote } from '../../../lib/embedder'
-import { deleteFileData, storeCards, upsertFileSummary } from '../../../lib/mongo'
-import { cheapSummarize } from '../../../lib/summarizer'
-import { createJob, updateJob } from '../../../lib/jobs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -77,11 +71,28 @@ export async function POST(req: NextRequest) {
     preloaded_files.push({ fname: eff_name, buf: raw })
   }
 
+  // Dynamic imports to avoid build issues on Vercel free-tier
+  const { createJob, updateJob } = await import('../../../lib/jobs')
+  const { extractPages } = await import('../../../lib/parser')
+  const { buildCardsFromPages } = await import('../../../lib/chunker')
+  const { embedRemote } = await import('../../../lib/embedder')
+  const { deleteFileData, storeCards, upsertFileSummary } = await import('../../../lib/mongo')
+  const { cheapSummarize } = await import('../../../lib/summarizer')
+
   await createJob(job_id, preloaded_files.length)
 
   // Process synchronously for Vercel serverless
   try {
-    await processFilesInBackground(job_id, user_id, project_id, preloaded_files, replace_set)
+    await processFilesInBackground(job_id, user_id, project_id, preloaded_files, replace_set, {
+      extractPages,
+      buildCardsFromPages,
+      embedRemote,
+      deleteFileData,
+      storeCards,
+      upsertFileSummary,
+      cheapSummarize,
+      updateJob
+    })
     await updateJob(job_id, { status: 'completed' })
     
     return NextResponse.json(
@@ -113,7 +124,8 @@ async function processFilesInBackground(
   user_id: string,
   project_id: string,
   preloaded_files: { fname: string; buf: Buffer }[],
-  replace_set: Set<string>
+  replace_set: Set<string>,
+  imports: any
 ) {
   for (let i = 0; i < preloaded_files.length; i++) {
     const { fname, buf } = preloaded_files[i]
@@ -122,19 +134,19 @@ async function processFilesInBackground(
 
       if (replace_set.has(fname)) {
         console.log(`[UPLOAD_DEBUG] Deleting existing data for ${fname}`)
-        await deleteFileData(user_id, project_id, fname)
+        await imports.deleteFileData(user_id, project_id, fname)
       }
 
       console.log(`[UPLOAD_DEBUG] Extracting pages from ${fname}`)
-      const pages = await extractPages(fname, buf)
+      const pages = await imports.extractPages(fname, buf)
       console.log(`[UPLOAD_DEBUG] Extracted ${pages.length} pages`)
 
       console.log(`[UPLOAD_DEBUG] Building cards from pages`)
-      const cards = await buildCardsFromPages(pages, fname, user_id, project_id)
+      const cards = await imports.buildCardsFromPages(pages, fname, user_id, project_id)
       console.log(`[UPLOAD_DEBUG] Built ${cards.length} cards`)
 
       console.log(`[UPLOAD_DEBUG] Generating embeddings for ${cards.length} cards`)
-      const vectors = await embedRemote(cards.map(c => c.content))
+      const vectors = await imports.embedRemote(cards.map((c: any) => c.content))
       if (vectors.length !== cards.length) {
         throw new Error(`Embedding mismatch: got ${vectors.length} for ${cards.length} cards`)
       }
@@ -144,21 +156,21 @@ async function processFilesInBackground(
       console.log(`[UPLOAD_DEBUG] Generated embeddings`)
 
       console.log(`[UPLOAD_DEBUG] Storing ${cards.length} cards in MongoDB`)
-      await storeCards(cards)
+      await imports.storeCards(cards)
       console.log(`[UPLOAD_DEBUG] Stored cards`)
 
-      const full_text = pages.map(p => p.text).join('\n\n')
-      const file_summary = await cheapSummarize(full_text, 6)
-      await upsertFileSummary(user_id, project_id, fname, file_summary)
+      const full_text = pages.map((p: any) => p.text).join('\n\n')
+      const file_summary = await imports.cheapSummarize(full_text, 6)
+      await imports.upsertFileSummary(user_id, project_id, fname, file_summary)
       console.log(`[UPLOAD_DEBUG] Upserted file summary for ${fname}`)
 
-      await updateJob(job_id, { completed: i + 1, status: i === preloaded_files.length - 1 ? 'completed' : 'processing' })
+      await imports.updateJob(job_id, { completed: i + 1, status: i === preloaded_files.length - 1 ? 'completed' : 'processing' })
       
       console.log(`[UPLOAD_DEBUG] Successfully processed ${fname}`)
     } catch (e: any) {
       console.error(`[UPLOAD_DEBUG] Error processing ${fname}:`, e)
       console.error(`[UPLOAD_DEBUG] Error stack:`, e.stack)
-      await updateJob(job_id, { completed: i + 1, status: 'failed' as const, last_error: String(e) })
+      await imports.updateJob(job_id, { completed: i + 1, status: 'failed' as const, last_error: String(e) })
       break // Stop processing on first error
     }
   }

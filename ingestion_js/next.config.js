@@ -2,7 +2,7 @@
 const nextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: '50mb' },
-    serverComponentsExternalPackages: ['pdf-lib', 'pdf2pic']
+    serverComponentsExternalPackages: ['pdf-lib', 'pdf2pic', 'mammoth', 'mongodb', 'pdfjs-dist']
   },
   webpack: (config) => {
     config.resolve = config.resolve || {}

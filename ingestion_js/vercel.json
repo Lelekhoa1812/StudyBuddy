@@ -2,7 +2,21 @@
   "functions": {
     "app/api/upload/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/debug/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/debug-parse/route.ts": {
+      "maxDuration": 300
     }
   },
-  "regions": ["iad1"]
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" }
+  ],
+  "regions": ["iad1"],
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "outputDirectory": ".next"
 }

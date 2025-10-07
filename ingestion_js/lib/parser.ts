@@ -31,46 +31,64 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
 export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   console.log(`[PARSER_DEBUG] Parsing PDF with ${buf.length} bytes`)
   
+  // First, try robust per-page extraction using pdfjs-dist (Node-safe, no canvas rendering)
   try {
-    // Load PDF document to get page count
+    const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf')
+    // In Node, we don't use a worker
+    if (pdfjs.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = undefined
+    }
+
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buf),
+      disableFontFace: true,
+      useSystemFonts: true,
+      isEvalSupported: false
+    })
+    const pdf = await loadingTask.promise
+    const pageCount: number = pdf.numPages
+    console.log(`[PARSER_DEBUG] pdfjs-dist loaded. Pages: ${pageCount}`)
+
+    const pages: Page[] = []
+    for (let i = 1; i <= pageCount; i++) {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
+      const text = (textContent.items || [])
+        .map((it: any) => (typeof it.str === 'string' ? it.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      pages.push({ page_num: i, text, images: [] })
+    }
+
+    console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages via pdfjs-dist`)
+    return pages
+  } catch (err) {
+    console.warn('[PARSER_DEBUG] pdfjs-dist extraction failed, falling back to basic extractor:', err)
+  }
+
+  // Fallback: use lightweight extractor and page-count from pdf-lib
+  try {
     const pdfDoc = await PDFDocument.load(buf)
     const pageCount = pdfDoc.getPageCount()
-    console.log(`[PARSER_DEBUG] PDF has ${pageCount} pages`)
-    
-    // Extract text content using basic parsing
     const extractedText = extractTextFromPdfBuffer(buf)
-    console.log(`[PARSER_DEBUG] Extracted ${extractedText.length} characters`)
-    
     const pages: Page[] = []
-    
     if (pageCount > 1) {
-      // Split text roughly by pages (basic approach)
       const textPerPage = Math.ceil(extractedText.length / pageCount)
       for (let i = 0; i < pageCount; i++) {
         const start = i * textPerPage
         const end = Math.min((i + 1) * textPerPage, extractedText.length)
         const pageText = extractedText.slice(start, end).trim() || `[Page ${i + 1} - Content]`
-        
-        pages.push({
-          page_num: i + 1,
-          text: pageText,
-          images: []
-        })
+        pages.push({ page_num: i + 1, text: pageText, images: [] })
       }
     } else {
-      // Single page
-      pages.push({
-        page_num: 1,
-        text: extractedText || `[PDF Content - ${buf.length} bytes]`,
-        images: []
-      })
+      pages.push({ page_num: 1, text: extractedText || `[PDF Content - ${buf.length} bytes]`, images: [] })
     }
-    
-    console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages`)
+    console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages via fallback`)
     return pages
   } catch (error) {
-    console.error('[PARSER_DEBUG] PDF parsing error:', error)
-    // Fallback to simple text representation
+    console.error('[PARSER_DEBUG] PDF parsing error (fallback):', error)
     return [{ page_num: 1, text: `[PDF Content - ${buf.length} bytes - Parse error: ${error}]`, images: [] }]
   }
 }

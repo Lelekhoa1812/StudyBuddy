@@ -22,3 +22,6 @@ exefiles
 ingestion_js/.next
 .next
 
+
+# Ignore Next.js build outputs
+ingestion_js/.next

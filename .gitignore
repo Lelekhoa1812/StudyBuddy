@@ -17,3 +17,8 @@ exefiles
 
 # Local Netlify folder
 .netlify
+
+# Ignore Next.js build outputs
+ingestion_js/.next
+.next
+

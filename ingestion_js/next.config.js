@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverActions: { bodySizeLimit: '50mb' },
+    serverActions: { bodySizeLimit: '500mb' },
     serverComponentsExternalPackages: ['pdf-lib', 'pdf2pic', 'mammoth', 'mongodb', 'pdfjs-dist']
   },
   webpack: (config) => {

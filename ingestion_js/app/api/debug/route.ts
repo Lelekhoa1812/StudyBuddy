@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
       case 'health':
         return await debugHealth()
 
+      case 'memory':
+        return await debugMemory()
+
       case 'test-embedding':
         return await debugTestEmbedding()
 
@@ -44,7 +47,7 @@ export async function GET(req: NextRequest) {
       default:
         return NextResponse.json({ 
           error: 'Invalid action', 
-          available_actions: ['status', 'jobs', 'files', 'chunks', 'env', 'health', 'test-embedding', 'test-parser'] 
+          available_actions: ['status', 'jobs', 'files', 'chunks', 'env', 'health', 'memory', 'test-embedding', 'test-parser'] 
         }, { status: 400 })
     }
   } catch (error) {
@@ -210,6 +213,27 @@ async function debugHealth() {
       },
       timestamp: new Date().toISOString()
     }, { status: 500 })
+  }
+}
+
+async function debugMemory() {
+  try {
+    const mu = process.memoryUsage()
+    const heapStats: any = {
+      rss: mu.rss,
+      heapTotal: mu.heapTotal,
+      heapUsed: mu.heapUsed,
+      external: mu.external,
+      arrayBuffers: (mu as any).arrayBuffers
+    }
+    return NextResponse.json({
+      pid: process.pid,
+      memory: heapStats,
+      uptime_seconds: Math.round(process.uptime()),
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
 

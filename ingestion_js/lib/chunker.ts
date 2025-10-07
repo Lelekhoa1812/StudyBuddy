@@ -1,7 +1,7 @@
 import slugify from 'slugify'
 import type { Page } from './parser'
 import { cheapSummarize, cleanChunkText } from './summarizer'
-import { nvidiaChatOnce, nvidiaChatJSON } from './llm'
+import { nvidiaChatOnce, nvidiaChatJSONRobust } from './llm'
 
 // Slightly smaller chunk sizes for lower peak memory during local dev
 const MAX_WORDS = Math.max(300, parseInt(process.env.CHUNK_MAX_WORDS || '450', 10))
@@ -99,7 +99,11 @@ async function llmSuggestChunks(full: string): Promise<string[] | null> {
   const modelEnv = full.length > 200_000 ? 'NVIDIA_LARGE' : 'NVIDIA_SMALL'
   const system = 'You are a text segmenter. Output JSON array of coherent chunks that preserve meaning. Each chunk should be short (approx 150-400 words). No commentary.'
   const user = `Split the following text into coherent chunks under ${tokenSoftLimit} tokens total per chunk. Respond with a pure JSON array of strings (no extra text).\n\n${full}`
-  const json = await nvidiaChatJSON<string[]>(system, user, { modelEnv: modelEnv as any, maxTokens: 800 })
+  const json = await nvidiaChatJSONRobust<string[]>(system, user, {
+    modelEnvPrimary: modelEnv as any,
+    modelEnvFallback: 'NVIDIA_LARGE',
+    maxTokens: 1200
+  })
   if (!json || !Array.isArray(json)) return null
   return json.filter(s => typeof s === 'string' && s.trim().length > 0)
 }

@@ -113,4 +113,48 @@ export async function nvidiaChatJSON<T = unknown>(
   }
 }
 
+function tryExtractJSONArray(text: string): string | null {
+  // Try code fence JSON
+  const fence = text.match(/```json[\s\S]*?```/i) || text.match(/```[\s\S]*?```/)
+  if (fence && fence[0]) {
+    const inner = fence[0].replace(/```json|```/gi, '').trim()
+    const jsonStart = inner.indexOf('[')
+    const jsonEnd = inner.lastIndexOf(']')
+    if (jsonStart >= 0 && jsonEnd > jsonStart) return inner.slice(jsonStart, jsonEnd + 1)
+  }
+  // Try raw array in text
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start >= 0 && end > start) return text.slice(start, end + 1)
+  return null
+}
+
+export async function nvidiaChatJSONRobust<T = unknown>(
+  systemPrompt: string,
+  userPrompt: string,
+  opts?: { modelEnvPrimary?: 'NVIDIA_SMALL' | 'NVIDIA_LARGE'; modelEnvFallback?: 'NVIDIA_SMALL' | 'NVIDIA_LARGE'; maxTokens?: number }
+): Promise<T | null> {
+  // Primary attempt
+  const primary = await nvidiaChatOnce(systemPrompt, userPrompt, {
+    modelEnv: opts?.modelEnvPrimary || 'NVIDIA_SMALL',
+    maxTokens: opts?.maxTokens ?? 800,
+    temperature: 0
+  })
+  if (primary) {
+    const extracted = tryExtractJSONArray(primary) || primary
+    try { return JSON.parse(extracted) as T } catch {}
+  }
+  // Fallback attempt with larger model
+  const fallback = await nvidiaChatOnce(systemPrompt, userPrompt, {
+    modelEnv: opts?.modelEnvFallback || 'NVIDIA_LARGE',
+    maxTokens: Math.max(800, opts?.maxTokens ?? 800),
+    temperature: 0
+  })
+  if (fallback) {
+    const extracted = tryExtractJSONArray(fallback) || fallback
+    try { return JSON.parse(extracted) as T } catch {}
+  }
+  return null
+}
+
 

@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Server not configured: EMBED_BASE_URL missing' }, { status: 500 })
   }
 
+  // Treat anything not running on Vercel production as local/dev
+  const isLocal = (process.env.VERCEL !== '1') && (process.env.NODE_ENV !== 'production')
+
   const job_id = randomUUID()
   const formData = await req.formData()
 
@@ -33,11 +36,14 @@ export async function POST(req: NextRequest) {
   const MAX_FILES_PER_UPLOAD = parseInt(process.env.MAX_FILES_PER_UPLOAD || '15')
   const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '50')
 
-  if (files.length > MAX_FILES_PER_UPLOAD) {
-    return NextResponse.json(
-      { error: `Too many files. Max ${MAX_FILES_PER_UPLOAD} allowed per upload.` },
-      { status: 400 }
-    )
+  // Skip per-upload count limits when running locally to aid debugging
+  if (!isLocal) {
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      return NextResponse.json(
+        { error: `Too many files. Max ${MAX_FILES_PER_UPLOAD} allowed per upload.` },
+        { status: 400 }
+      )
+    }
   }
 
   let replace_set = new Set<string>()
@@ -61,11 +67,14 @@ export async function POST(req: NextRequest) {
   const preloaded_files: { fname: string; buf: Buffer }[] = []
   for (const file of files) {
     const raw = Buffer.from(await file.arrayBuffer())
-    if (raw.length > MAX_FILE_MB * 1024 * 1024) {
-      return NextResponse.json(
-        { error: `${file.name} exceeds ${MAX_FILE_MB} MB limit` },
-        { status: 400 }
-      )
+    // Skip per-file size limits when running locally to aid debugging
+    if (!isLocal) {
+      if (raw.length > MAX_FILE_MB * 1024 * 1024) {
+        return NextResponse.json(
+          { error: `${file.name} exceeds ${MAX_FILE_MB} MB limit` },
+          { status: 400 }
+        )
+      }
     }
     const eff_name = rename_map[file.name] || file.name
     preloaded_files.push({ fname: eff_name, buf: raw })
@@ -145,21 +154,32 @@ async function processFilesInBackground(
       const cards = await imports.buildCardsFromPages(pages, fname, user_id, project_id)
       console.log(`[UPLOAD_DEBUG] Built ${cards.length} cards`)
 
-      console.log(`[UPLOAD_DEBUG] Generating embeddings for ${cards.length} cards`)
-      const vectors = await imports.embedRemote(cards.map((c: any) => c.content))
-      if (vectors.length !== cards.length) {
-        throw new Error(`Embedding mismatch: got ${vectors.length} for ${cards.length} cards`)
+      // Batch embeddings to avoid high memory usage
+      console.log(`[UPLOAD_DEBUG] Generating embeddings for ${cards.length} cards in batches`)
+      const BATCH = 32
+      for (let start = 0; start < cards.length; start += BATCH) {
+        const end = Math.min(start + BATCH, cards.length)
+        const batch = cards.slice(start, end)
+        const vectors = await imports.embedRemote(batch.map((c: any) => c.content))
+        if (vectors.length !== batch.length) {
+          throw new Error(`Embedding mismatch: got ${vectors.length} for ${batch.length} cards`)
+        }
+        for (let j = 0; j < batch.length; j++) {
+          batch[j].embedding = vectors[j]
+        }
       }
-      for (let j = 0; j < cards.length; j++) {
-        cards[j].embedding = vectors[j]
-      }
-      console.log(`[UPLOAD_DEBUG] Generated embeddings`)
+      console.log(`[UPLOAD_DEBUG] Generated embeddings (batched)`)
 
       console.log(`[UPLOAD_DEBUG] Storing ${cards.length} cards in MongoDB`)
       await imports.storeCards(cards)
       console.log(`[UPLOAD_DEBUG] Stored cards`)
 
-      const full_text = pages.map((p: any) => p.text).join('\n\n')
+      // Cap text length to reduce memory pressure for summarization
+      const full_text_raw = pages.map((p: any) => p.text).join('\n\n')
+      const MAX_SUMMARY_CHARS = 200_000
+      const full_text = full_text_raw.length > MAX_SUMMARY_CHARS
+        ? full_text_raw.slice(0, MAX_SUMMARY_CHARS)
+        : full_text_raw
       const file_summary = await imports.cheapSummarize(full_text, 6)
       await imports.upsertFileSummary(user_id, project_id, fname, file_summary)
       console.log(`[UPLOAD_DEBUG] Upserted file summary for ${fname}`)

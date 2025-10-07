@@ -31,41 +31,40 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
 export async function parsePdfBytes(buf: Buffer): Promise<Page[]> {
   console.log(`[PARSER_DEBUG] Parsing PDF with ${buf.length} bytes`)
   
-  // First, try robust per-page extraction using pdfjs-dist (Node-safe, no canvas rendering)
-  try {
-    const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf')
-    // In Node, we don't use a worker
-    if (pdfjs.GlobalWorkerOptions) {
-      pdfjs.GlobalWorkerOptions.workerSrc = undefined
+  // Optional heavy parser (guarded by env to avoid OOM locally)
+  if (process.env.PARSER_USE_PDFJS === '1') {
+    try {
+      const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf')
+      if (pdfjs.GlobalWorkerOptions) {
+        pdfjs.GlobalWorkerOptions.workerSrc = undefined
+      }
+      const loadingTask = pdfjs.getDocument({
+        data: new Uint8Array(buf),
+        disableFontFace: true,
+        useSystemFonts: true,
+        isEvalSupported: false
+      })
+      const pdf = await loadingTask.promise
+      const pageCount: number = pdf.numPages
+      console.log(`[PARSER_DEBUG] pdfjs-dist loaded. Pages: ${pageCount}`)
+
+      const pages: Page[] = []
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+        const text = (textContent.items || [])
+          .map((it: any) => (typeof it.str === 'string' ? it.str : ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+        pages.push({ page_num: i, text, images: [] })
+      }
+      console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages via pdfjs-dist`)
+      return pages
+    } catch (err) {
+      console.warn('[PARSER_DEBUG] pdfjs-dist extraction failed, falling back to basic extractor:', err)
     }
-
-    const loadingTask = pdfjs.getDocument({
-      data: new Uint8Array(buf),
-      disableFontFace: true,
-      useSystemFonts: true,
-      isEvalSupported: false
-    })
-    const pdf = await loadingTask.promise
-    const pageCount: number = pdf.numPages
-    console.log(`[PARSER_DEBUG] pdfjs-dist loaded. Pages: ${pageCount}`)
-
-    const pages: Page[] = []
-    for (let i = 1; i <= pageCount; i++) {
-      const page = await pdf.getPage(i)
-      const textContent = await page.getTextContent()
-      const text = (textContent.items || [])
-        .map((it: any) => (typeof it.str === 'string' ? it.str : ''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      pages.push({ page_num: i, text, images: [] })
-    }
-
-    console.log(`[PARSER_DEBUG] Parsed PDF with ${pages.length} pages via pdfjs-dist`)
-    return pages
-  } catch (err) {
-    console.warn('[PARSER_DEBUG] pdfjs-dist extraction failed, falling back to basic extractor:', err)
   }
 
   // Fallback: use lightweight extractor and page-count from pdf-lib

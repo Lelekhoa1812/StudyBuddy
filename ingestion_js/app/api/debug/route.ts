@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     switch (action) {
       case 'status':
-        if (!job_id) {
+  if (!job_id) {
           return NextResponse.json({ error: 'job_id required for status check' }, { status: 400 })
         }
         return await debugJobStatus(job_id)

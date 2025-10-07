@@ -6,7 +6,8 @@ echo "🚀 Testing Ingestion JS API on Vercel"
 echo "======================================"
 
 # Configuration
-BACKEND_URL="https://study-buddy-ingestion1.vercel.app/api"
+# BACKEND_URL="https://study-buddy-ingestion1.vercel.app/api"
+BACKEND_URL="http://localhost:3001/api"
 USER_ID="44e65346-8eaa-4f95-b17a-f6219953e7a8"
 PROJECT_ID="496e2fad-ec7e-4562-b06a-ea2491f2460"
 

@@ -8,6 +8,23 @@ function getNvidiaKey(): string | null {
   return null
 }
 
+function getModelFromEnv(which?: 'NVIDIA_SMALL' | 'NVIDIA_LARGE'): string | null {
+  const tryKeys: string[] = []
+  if (which === 'NVIDIA_SMALL') {
+    tryKeys.push('NVIDIA_SMALL', 'NVIDIA_SMALL_MODEL', 'NVIDIA_MODEL_SMALL')
+  } else if (which === 'NVIDIA_LARGE') {
+    tryKeys.push('NVIDIA_LARGE', 'NVIDIA_LARGE_MODEL', 'NVIDIA_MODEL_LARGE')
+  }
+  // Common fallback
+  tryKeys.push('NVIDIA_MAVERICK_MODEL')
+
+  for (const key of tryKeys) {
+    const val = process.env[key]
+    if (val && typeof val === 'string' && val.trim().length > 0) return val.trim()
+  }
+  return null
+}
+
 export function normalizeConcise(text: string): string {
   if (!text) return ''
   let t = text.trim()
@@ -43,9 +60,8 @@ export async function nvidiaChatOnce(
   const key = getNvidiaKey()
   if (!key) return ''
 
-  const modelName = (opts?.modelEnv ? process.env[opts.modelEnv] : undefined)
-    || process.env.NVIDIA_MAVERICK_MODEL
-    || 'meta/llama-4-8b-instruct'
+  const modelName = (getModelFromEnv(opts?.modelEnv) || 'meta/llama-4-8b-instruct').replace(/^['"]|['"]$/g, '')
+  console.log('[LLM_DEBUG] chatOnce model:', modelName, 'env:', opts?.modelEnv || 'default')
 
   const payload = {
     model: modelName,
@@ -66,9 +82,13 @@ export async function nvidiaChatOnce(
     },
     body: JSON.stringify(payload)
   })
-  if (!res.ok) return ''
+  if (!res.ok) {
+    console.warn('[LLM_DEBUG] chatOnce HTTP', res.status)
+    return ''
+  }
   const data = await res.json() as any
   const text = data?.choices?.[0]?.message?.content || ''
+  console.log('[LLM_DEBUG] chatOnce tokens:', data?.usage?.total_tokens, 'textLen:', text.length)
   return normalizeConcise(text)
 }
 
@@ -80,9 +100,8 @@ export async function nvidiaChatJSON<T = unknown>(
   const key = getNvidiaKey()
   if (!key) return null
 
-  const modelName = (opts?.modelEnv ? process.env[opts.modelEnv] : undefined)
-    || process.env.NVIDIA_MAVERICK_MODEL
-    || 'meta/llama-4-8b-instruct'
+  const modelName = (getModelFromEnv(opts?.modelEnv) || 'meta/llama-4-8b-instruct').replace(/^['"]|['"]$/g, '')
+  console.log('[LLM_DEBUG] chatJSON model:', modelName, 'env:', opts?.modelEnv || 'default')
 
   const payload = {
     model: modelName,
@@ -103,14 +122,29 @@ export async function nvidiaChatJSON<T = unknown>(
     },
     body: JSON.stringify(payload)
   })
-  if (!res.ok) return null
-  const data = await res.json() as any
-  const text: string = (data?.choices?.[0]?.message?.content || '').trim()
-  try {
-    return JSON.parse(text) as T
-  } catch {
+  if (!res.ok) {
+    console.warn('[LLM_DEBUG] chatJSON HTTP', res.status)
     return null
   }
+  const data = await res.json() as any
+  let text: string = (data?.choices?.[0]?.message?.content || '').trim()
+  // Strip common code fences if present
+  if (text.startsWith('```')) {
+    text = text.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim()
+  }
+  // Attempt direct JSON parse, then fallback to extracting first JSON array/object
+  try {
+    return JSON.parse(text) as T
+  } catch {}
+  console.warn('[LLM_DEBUG] chatJSON parse failed, attempting extraction')
+  const match = text.match(/[\[{][\s\S]*[\]}]/)
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as T
+    } catch {}
+  }
+  console.warn('[LLM_DEBUG] chatJSON extraction failed')
+  return null
 }
 
 function tryExtractJSONArray(text: string): string | null {

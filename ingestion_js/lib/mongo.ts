@@ -56,7 +56,13 @@ export async function storeCards(cards: any[]) {
       throw new Error(`Invalid embedding length; expected ${VECTOR_DIM}`)
     }
   }
-  await db.collection('chunks').insertMany(cards, { ordered: false })
+  // Insert in batches to reduce peak memory/DocBatch size
+  const batchSize = Math.max(50, parseInt(process.env.MONGO_INSERT_BATCH_SIZE || '200', 10))
+  for (let start = 0; start < cards.length; start += batchSize) {
+    const end = Math.min(start + batchSize, cards.length)
+    const batch = cards.slice(start, end)
+    await db.collection('chunks').insertMany(batch, { ordered: false })
+  }
 }
 
 export async function upsertFileSummary(user_id: string, project_id: string, filename: string, summary: string) {

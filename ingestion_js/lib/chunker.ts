@@ -2,9 +2,10 @@ import slugify from 'slugify'
 import type { Page } from './parser'
 import { cheapSummarize, cleanChunkText } from './summarizer'
 
-const MAX_WORDS = 500
-const MIN_WORDS = 150
-const OVERLAP_WORDS = 50
+// Slightly smaller chunk sizes for lower peak memory during local dev
+const MAX_WORDS = Math.max(300, parseInt(process.env.CHUNK_MAX_WORDS || '450', 10))
+const MIN_WORDS = Math.max(120, parseInt(process.env.CHUNK_MIN_WORDS || '150', 10))
+const OVERLAP_WORDS = Math.max(40, parseInt(process.env.CHUNK_OVERLAP_WORDS || '50', 10))
 
 function byHeadings(text: string): string[] {
   // Enhanced patterns matching Python logic

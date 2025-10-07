@@ -10,7 +10,8 @@ export async function embedRemote(texts: string[]): Promise<number[][]> {
   }
 
   // Memory-safe batching to avoid large payloads in Node/Vercel
-  const batchSize = Math.max(1, parseInt(process.env.EMBED_BATCH_SIZE || '32', 10))
+  // Keep batches modest for local dev to avoid large JSON payloads in memory
+  const batchSize = Math.max(1, parseInt(process.env.EMBED_BATCH_SIZE || '8', 10))
   const results: number[][] = []
 
   for (let start = 0; start < texts.length; start += batchSize) {

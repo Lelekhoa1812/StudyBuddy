@@ -9,12 +9,12 @@ echo "======================================"
 # BACKEND_URL="https://study-buddy-ingestion1.vercel.app/api"
 BACKEND_URL="http://localhost:3001/api"
 USER_ID="44e65346-8eaa-4f95-b17a-f6219953e7a8"
-PROJECT_ID="496e2fad-ec7e-4562-b06a-ea2491f2460"
+PROJECT_ID="ccd9d49d-3a07-43e7-afce-5e8cfc42c8d4"
 
 # Test files
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FILE1="$SCRIPT_DIR/../exefiles/Lecture5_ML.pdf"
-FILE2="$SCRIPT_DIR/../exefiles/Lecture6_ANN_DL.pdf"
+FILE1="$SCRIPT_DIR/../exefiles/Lecture 1.pdf"
+FILE2="$SCRIPT_DIR/../exefiles/Lecture 2.pdf"
 
 DEBUG=${DEBUG:-0}
 TRACE=${TRACE:-0}
@@ -211,9 +211,9 @@ echo "-------------------------------"
 json_with_status GET "$BACKEND_URL/files?user_id=$USER_ID&project_id=$PROJECT_ID" -H "Accept: application/json" | sed 's/^/  /'
 
 echo ""
-echo "🔍 Step 7: Get File Chunks for Lecture5_ML.pdf"
+echo "🔍 Step 7: Get File Chunks for Lecture 1.pdf"
 echo "-----------------------------------------------"
-json_with_status GET "$BACKEND_URL/files/chunks?user_id=$USER_ID&project_id=$PROJECT_ID&filename=Lecture5_ML.pdf&limit=5" -H "Accept: application/json" | sed 's/^/  /'
+json_with_status GET "$BACKEND_URL/files/chunks?user_id=$USER_ID&project_id=$PROJECT_ID&filename=Lecture 1.pdf&limit=5" -H "Accept: application/json" | sed 's/^/  /'
 
 echo ""
 echo "🎉 Test completed!"

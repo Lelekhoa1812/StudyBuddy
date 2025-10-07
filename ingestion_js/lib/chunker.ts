@@ -1,6 +1,7 @@
 import slugify from 'slugify'
 import type { Page } from './parser'
 import { cheapSummarize, cleanChunkText } from './summarizer'
+import { nvidiaChatOnce, nvidiaChatJSON } from './llm'
 
 // Slightly smaller chunk sizes for lower peak memory during local dev
 const MAX_WORDS = Math.max(300, parseInt(process.env.CHUNK_MAX_WORDS || '450', 10))
@@ -93,6 +94,16 @@ function createOverlappingChunks(blocks: string[]): string[] {
   return chunks
 }
 
+async function llmSuggestChunks(full: string): Promise<string[] | null> {
+  const tokenSoftLimit = Math.max(1200, parseInt(process.env.LLM_CHUNK_SOFT_TOKENS || '2000', 10))
+  const modelEnv = full.length > 200_000 ? 'NVIDIA_LARGE' : 'NVIDIA_SMALL'
+  const system = 'You are a text segmenter. Output JSON array of coherent chunks that preserve meaning. Each chunk should be short (approx 150-400 words). No commentary.'
+  const user = `Split the following text into coherent chunks under ${tokenSoftLimit} tokens total per chunk. Respond with a pure JSON array of strings (no extra text).\n\n${full}`
+  const json = await nvidiaChatJSON<string[]>(system, user, { modelEnv: modelEnv as any, maxTokens: 800 })
+  if (!json || !Array.isArray(json)) return null
+  return json.filter(s => typeof s === 'string' && s.trim().length > 0)
+}
+
 export async function buildCardsFromPages(pages: Page[], filename: string, user_id: string, project_id: string) {
   console.log(`[CHUNKER_DEBUG] Building cards from ${pages.length} pages for ${filename}`)
   
@@ -100,18 +111,27 @@ export async function buildCardsFromPages(pages: Page[], filename: string, user_
   for (const p of pages) full += `\n\n[[Page ${p.page_num}]]\n${(p.text || '').trim()}\n`
   console.log(`[CHUNKER_DEBUG] Full text length: ${full.length}`)
   
-  const coarse = byHeadings(full)
-  console.log(`[CHUNKER_DEBUG] Split into ${coarse.length} heading blocks`)
-  
-  const chunks = createOverlappingChunks(coarse)
-  console.log(`[CHUNKER_DEBUG] Created ${chunks.length} overlapping chunks`)
+  let chunks: string[] | null = null
+  try {
+    chunks = await llmSuggestChunks(full)
+  } catch {}
+  if (!chunks || chunks.length === 0) {
+    const coarse = byHeadings(full)
+    console.log(`[CHUNKER_DEBUG] LLM chunking unavailable; fallback by headings: ${coarse.length} blocks`)
+    chunks = createOverlappingChunks(coarse)
+  }
+  console.log(`[CHUNKER_DEBUG] Using ${chunks.length} chunks`)
 
   const out: any[] = []
   for (let i = 0; i < chunks.length; i++) {
     console.log(`[CHUNKER_DEBUG] Processing chunk ${i + 1}/${chunks.length}`)
     
     const cleaned = await cleanChunkText(chunks[i])
-    const topic = (await cheapSummarize(cleaned, 1)) || (cleaned.slice(0, 80) + '...')
+    const topic = await nvidiaChatOnce(
+      'You extract concise topic names. Output: a brief topic only.',
+      `Provide a short topic/title for this content. No preface. No extra words.\n\n${cleaned}`,
+      { modelEnv: 'NVIDIA_SMALL', maxTokens: 24 }
+    ) || (cleaned.slice(0, 80) + '...')
     const summary = await cheapSummarize(cleaned, 3)
     const firstPage = pages[0]?.page_num ?? 1
     const lastPage = pages[pages.length - 1]?.page_num ?? 1

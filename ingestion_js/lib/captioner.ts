@@ -22,8 +22,8 @@ export async function captionImage(imageBuffer: Buffer): Promise<string> {
   if (!key) return ''
   const imgB64 = await imageToJpegBase64(imageBuffer)
   const system_prompt =
-    'You are an expert vision captioner. Produce a precise, information-dense caption of the image. Do not include conversational phrases or meta commentary.'
-  const user_prompt = 'Caption this image at the finest level of detail. Return only the caption text.'
+    'You are an expert vision captioner. Output a concise, information-dense caption only. No preface. No explanations. No meta commentary.'
+  const user_prompt = 'Return only the caption text for this image. No preface, no fillers, no extra words.'
   const payload = {
     model: process.env.NVIDIA_MAVERICK_MODEL || 'meta/llama-4-maverick-17b-128e-instruct',
     messages: [
@@ -58,8 +58,13 @@ export function normalizeCaption(text: string): string {
   if (!text) return ''
   let t = text.trim()
   const banned = [
-    'sure,', 'sure.', 'sure', 'here is', 'here are', 'this image', 'the image', 'image shows',
-    'the picture', 'the photo', 'the text describes', 'the text describe', 'it shows', 'it depicts',
+    'sure,', 'sure.', 'sure',
+    'here is', 'here are', "here's",
+    'this image', 'the image', 'image shows', 'in the image',
+    'the picture', 'the photo', 'photo shows', 'picture shows',
+    'the text describes', 'the text describe', 'this text describes', 'this text describe',
+    'this describes', 'this is', 'this is cleaned',
+    'it shows', 'it depicts', 'it is',
     'caption:', 'description:', 'output:', 'result:', 'answer:', 'analysis:', 'observation:'
   ]
   const lower = t.toLowerCase()
@@ -69,5 +74,7 @@ export function normalizeCaption(text: string): string {
       break
     }
   }
-  return t.replace(/^['\"]|['\"]$/g, '').trim()
+  t = t.replace(/^[-–—>*\s]+/, '')
+  t = t.replace(/^[\'\"]|[\'\"]$/g, '')
+  return t.trim()
 }

@@ -1,14 +1,12 @@
+import { nvidiaChatOnce } from './llm'
+
 export async function cheapSummarize(text: string, maxSentences = 3): Promise<string> {
-  if (!text || text.trim().length < 50) return text.trim()
-  try {
-    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean)
-    if (sentences.length <= maxSentences) return text.trim()
-    let out = sentences.slice(0, maxSentences).join(' ')
-    if (!/[.!?]$/.test(out)) out += '.'
-    return out
-  } catch {
-    return text.length > 200 ? text.slice(0, 200) + '...' : text
-  }
+  const trimmed = (text || '').trim()
+  if (!trimmed) return ''
+  const system = 'You summarize text. Output: concise summary only. No preface, no meta.'
+  const user = `Summarize in at most ${maxSentences} sentences. Text:\n\n${trimmed}`
+  const out = await nvidiaChatOnce(system, user, { modelEnv: 'NVIDIA_SMALL', maxTokens: 160 })
+  return out || trimmed
 }
 
 export async function cleanChunkText(text: string): Promise<string> {
